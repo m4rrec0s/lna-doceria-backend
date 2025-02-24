@@ -2,7 +2,11 @@
   "name": "lna-backend",
   "version": "1.0.0",
   "main": "index.js",
+  "engines": {
+    "node": "18.x"
+  },
   "scripts": {
+    "start": "node src/server.ts",
     "dev": "nodemon src/server.ts"
   },
   "keywords": [],
