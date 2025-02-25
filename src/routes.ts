@@ -14,6 +14,7 @@ import {
   updateCategory,
   deleteCategory,
 } from "./controllers/categoryController";
+import { prisma } from "./utils/prismaClient";
 
 export const routes = Router();
 
@@ -21,8 +22,15 @@ export const routes = Router();
 routes.post("/login", loginController);
 routes.post("/register", registerController);
 routes.post("/products", upload.single("image"), async (req, res) => {
-  req.body.imageUrl = req.file ? await uploadToDrive(req.file) : "";
-  createProduct(req, res);
+  try {
+    if (req.file) {
+      req.body.imageUrl = await uploadToDrive(req.file);
+    }
+    await createProduct(req, res);
+  } catch (error) {
+    console.error("Erro na rota de criação de produto:", error);
+    res.status(500).json({ error: "Erro ao processar upload" });
+  }
 });
 routes.post("/categories", createCategory);
 
@@ -32,26 +40,30 @@ routes.get("/products", getProducts);
 // puts
 routes.put("/categories/:id", updateCategory);
 routes.put("/products/:id", upload.single("image"), async (req, res) => {
-  if (req.file) {
+  try {
     const { id } = req.params;
-    const { deleteFromDrive } = await import("./config/googleDriveConfig");
-    const { prisma } = await import("./utils/prismaClient");
     const oldProduct = await prisma.product.findUnique({ where: { id } });
-    if (oldProduct?.imageUrl) {
-      const fileId = oldProduct.imageUrl.split("id=")[1];
-      try {
-        await deleteFromDrive(fileId);
-      } catch (error: any) {
-        if (error.response && error.response.status === 404) {
-          console.warn("Imagem antiga não encontrada, ignorando exclusão");
-        } else {
-          throw error;
+
+    if (req.file) {
+      if (oldProduct?.imageUrl) {
+        const fileId = oldProduct.imageUrl.split("id=")[1];
+        try {
+          await deleteFromDrive(fileId);
+        } catch (error: any) {
+          if (error.response?.status === 404) {
+            console.warn("Imagem antiga não encontrada, ignorando exclusão");
+          } else {
+            throw error;
+          }
         }
       }
+      req.body.imageUrl = await uploadToDrive(req.file);
     }
-    req.body.imageUrl = await uploadToDrive(req.file);
+    await updateProduct(req, res);
+  } catch (error) {
+    console.error("Erro na rota de atualização de produto:", error);
+    res.status(500).json({ error: "Erro ao processar upload" });
   }
-  updateProduct(req, res);
 });
 
 // deletes
