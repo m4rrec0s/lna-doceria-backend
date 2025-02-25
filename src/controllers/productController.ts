@@ -4,18 +4,31 @@ import { deleteFromDrive, uploadToDrive } from "../config/googleDriveConfig";
 
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const { name, description, price, categoryIds, discount, imageUrl } = req.body;
+    const { name, description, price, categoryIds, discount, imageUrl } =
+      req.body;
 
+    // Validação básica
     if (!name || !description || !price || !imageUrl) {
       return res.status(400).json({ error: "Campos obrigatórios faltando" });
     }
 
-    // Converte categoryIds para array, se necessário
+    // Converte categoryIds para array, aceitando string simples ou array
     let parsedCategoryIds: string[] = [];
     if (categoryIds) {
-      parsedCategoryIds = Array.isArray(categoryIds)
-        ? categoryIds
-        : JSON.parse(categoryIds); // Caso seja uma string JSON
+      if (Array.isArray(categoryIds)) {
+        parsedCategoryIds = categoryIds; // Caso já seja um array
+      } else {
+        try {
+          // Tenta parsear como JSON (ex.: "[\"id1\", \"id2\"]")
+          parsedCategoryIds = JSON.parse(categoryIds);
+          if (!Array.isArray(parsedCategoryIds)) {
+            throw new Error("Não é um array");
+          }
+        } catch {
+          // Se não for JSON válido, trata como string simples
+          parsedCategoryIds = [categoryIds];
+        }
+      }
     }
 
     // Verifica se as categorias existem
@@ -24,7 +37,9 @@ export const createProduct = async (req: Request, res: Response) => {
         where: { id: { in: parsedCategoryIds } },
       });
       if (existingCategories.length !== parsedCategoryIds.length) {
-        return res.status(400).json({ error: "Uma ou mais categorias não existem" });
+        return res
+          .status(400)
+          .json({ error: "Uma ou mais categorias não existem" });
       }
     }
 
@@ -46,7 +61,10 @@ export const createProduct = async (req: Request, res: Response) => {
     res.status(201).json(product);
   } catch (error) {
     console.error("Erro ao criar produto:", error);
-    res.status(500).json({ error: "Erro interno ao criar produto" });
+    res.status(500).json({
+      error: "Erro interno ao criar produto",
+      details: (error as Error).message,
+    });
   }
 };
 
@@ -65,7 +83,8 @@ export const updateProduct = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
-    const { name, description, price, categoryIds, discount, imageUrl } = req.body;
+    const { name, description, price, categoryIds, discount, imageUrl } =
+      req.body;
 
     let parsedCategoryIds: string[] = [];
     if (categoryIds) {
@@ -79,7 +98,9 @@ export const updateProduct = async (req: Request, res: Response) => {
         where: { id: { in: parsedCategoryIds } },
       });
       if (existingCategories.length !== parsedCategoryIds.length) {
-        return res.status(400).json({ error: "Uma ou mais categorias não existem" });
+        return res
+          .status(400)
+          .json({ error: "Uma ou mais categorias não existem" });
       }
     }
 
