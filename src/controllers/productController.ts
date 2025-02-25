@@ -3,7 +3,8 @@ import { prisma } from "../utils/prismaClient";
 import { deleteFromDrive, uploadToDrive } from "../config/googleDriveConfig";
 
 export const createProduct = async (req: Request, res: Response) => {
-  const { name, description, price, categoryId, discount, imageUrl } = req.body;
+  const { name, description, price, categoryIds, discount, imageUrl } =
+    req.body;
   const discountValue = discount ? parseFloat(discount) : 0;
   const product = await prisma.product.create({
     data: {
@@ -11,8 +12,10 @@ export const createProduct = async (req: Request, res: Response) => {
       description,
       price: parseFloat(price),
       imageUrl,
-      categoryId,
       discount: discountValue,
+      categories: {
+        connect: categoryIds.map((id: string) => ({ id })),
+      },
     },
   });
   res.status(201).json(product);
@@ -20,7 +23,7 @@ export const createProduct = async (req: Request, res: Response) => {
 
 export const getProducts = async (req: Request, res: Response) => {
   const products = await prisma.product.findMany({
-    include: { category: true },
+    include: { categories: true },
   });
   res.json(products);
 };
@@ -36,17 +39,23 @@ export const updateProduct = async (
     return;
   }
 
-  const { name, description, price, categoryId, discount, imageUrl } = req.body;
+  const { name, description, price, categoryIds, discount, imageUrl } =
+    req.body;
   const updateData: any = {
     name: name ?? oldProduct.name,
     description: description ?? oldProduct.description,
     price: price ? parseFloat(price) : oldProduct.price,
-    categoryId: categoryId ?? oldProduct.categoryId,
     discount: discount ? parseFloat(discount) : oldProduct.discount ?? 0,
   };
 
   if (imageUrl) {
     updateData.imageUrl = imageUrl;
+  }
+
+  if (categoryIds) {
+    updateData.categories = {
+      set: categoryIds.map((id: string) => ({ id })),
+    };
   }
 
   const product = await prisma.product.update({

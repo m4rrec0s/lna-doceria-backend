@@ -33,13 +33,7 @@ routes.get("/products", getProducts);
 routes.put("/categories/:id", updateCategory);
 routes.put("/products/:id", upload.single("image"), async (req, res) => {
   if (req.file) {
-    // Busca o produto antigo para deletar a imagem atual
     const { id } = req.params;
-    // É necessário importar o prismaClient ou executar uma função no controller;
-    // por simplicidade, assumimos que updateProduct cuidará caso req.body.imageUrl seja definida.
-    // Deleta a imagem antiga:
-    // (Esta lógica pode ser extraída para um helper, se desejado.)
-    // Obs.: se preferir, você pode importar o prismaClient e buscar o produto aqui.
     const { deleteFromDrive } = await import("./config/googleDriveConfig");
     const { prisma } = await import("./utils/prismaClient");
     const oldProduct = await prisma.product.findUnique({ where: { id } });
