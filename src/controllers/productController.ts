@@ -69,13 +69,53 @@ export const createProduct = async (req: Request, res: Response) => {
 };
 
 export const getProducts = async (req: Request, res: Response) => {
-  const products = await prisma.product.findMany({
-    include: { categories: true },
-    orderBy: {
-      createdAt: 'desc'
+  try {
+    const { page = "1", per_page = "50", categoryId, name } = req.query;
+
+    const pageNumber = parseInt(page as string);
+    const perPage = parseInt(per_page as string);
+    const skip = (pageNumber - 1) * perPage;
+
+    const where: any = {};
+
+    if (categoryId) {
+      where.categories = {
+        some: {
+          id: categoryId as string,
+        },
+      };
     }
-  });
-  res.json(products);
+
+    if (name) {
+      where.name = {
+        contains: name as string,
+        mode: "insensitive",
+      };
+    }
+
+    const totalCount = await prisma.product.count({ where });
+
+    const products = await prisma.product.findMany({
+      where,
+      include: { categories: true },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: perPage,
+    });
+
+    res.json({
+      data: products,
+      pagination: {
+        total: totalCount,
+        page: pageNumber,
+        per_page: perPage,
+        total_pages: Math.ceil(totalCount / perPage),
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao buscar produtos:", error);
+    res.status(500).json({ error: "Erro interno ao buscar produtos" });
+  }
 };
 
 export const updateProduct = async (req: Request, res: Response) => {
