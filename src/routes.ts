@@ -13,6 +13,7 @@ import {
   createCategory,
   updateCategory,
   deleteCategory,
+  getCategories,
 } from "./controllers/categoryController";
 import { prisma } from "./utils/prismaClient";
 
@@ -36,6 +37,7 @@ routes.post("/categories", createCategory);
 
 // gets
 routes.get("/products", getProducts);
+routes.get("/categories", getCategories);
 
 // puts
 routes.put("/categories/:id", updateCategory);
