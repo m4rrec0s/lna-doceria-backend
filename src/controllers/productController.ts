@@ -71,6 +71,9 @@ export const createProduct = async (req: Request, res: Response) => {
 export const getProducts = async (req: Request, res: Response) => {
   const products = await prisma.product.findMany({
     include: { categories: true },
+    orderBy: {
+      createdAt: 'desc'
+    }
   });
   res.json(products);
 };
