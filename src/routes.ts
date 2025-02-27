@@ -15,6 +15,10 @@ import {
   deleteCategory,
   getCategories,
 } from "./controllers/categoryController";
+import {
+  getDisplaySettings,
+  saveDisplaySettings,
+} from "./controllers/displaySettingsController";
 import { prisma } from "./utils/prismaClient";
 
 export const routes = Router();
@@ -34,10 +38,12 @@ routes.post("/products", upload.single("image"), async (req, res) => {
   }
 });
 routes.post("/categories", createCategory);
+routes.post("/display-settings", saveDisplaySettings);
 
 // gets
 routes.get("/products", getProducts);
 routes.get("/categories", getCategories);
+routes.get("/display-settings", getDisplaySettings);
 
 // puts
 routes.put("/categories/:id", updateCategory);

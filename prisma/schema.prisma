@@ -21,9 +21,10 @@ model User {
 }
 
 model Category {
-  id       String    @id @default(uuid())
-  name     String
-  products Product[]
+  id              String           @id @default(uuid())
+  name            String
+  products        Product[]
+  displaySections DisplaySection[]
 }
 
 model Product {
@@ -36,4 +37,20 @@ model Product {
   categories  Category[]
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @default(now()) @updatedAt
+}
+
+model DisplaySection {
+  id         String   @id @default(uuid())
+  title      String
+  type       String // "category" ou "custom"
+  active     Boolean  @default(true)
+  categoryId String?
+  productIds String?
+  order      Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@map("display_sections")
 }
