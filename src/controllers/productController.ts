@@ -70,13 +70,17 @@ export const createProduct = async (req: Request, res: Response) => {
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    const { page = "1", per_page = "50", categoryId, name } = req.query;
+    const { page = "1", per_page = "50", categoryId, name, id } = req.query;
 
     const pageNumber = parseInt(page as string);
     const perPage = parseInt(per_page as string);
     const skip = (pageNumber - 1) * perPage;
 
     const where: any = {};
+
+    if (id) {
+      where.id = id as string;
+    }
 
     if (categoryId) {
       where.categories = {
