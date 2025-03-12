@@ -17,6 +17,14 @@ import {
   getCategoryById,
 } from "./controllers/categoryController";
 import {
+  createFlavor,
+  getFlavors,
+  getFlavorById,
+  updateFlavor,
+  deleteFlavor,
+  getFlavorsByCategoryId,
+} from "./controllers/flavorController";
+import {
   getDisplaySettings,
   saveDisplaySettings,
 } from "./controllers/displaySettingsController";
@@ -40,12 +48,26 @@ routes.post("/products", upload.single("image"), async (req, res) => {
 });
 routes.post("/categories", createCategory);
 routes.post("/display-settings", saveDisplaySettings);
+routes.post("/flavors", upload.single("image"), async (req, res) => {
+  try {
+    if (req.file) {
+      req.body.imageUrl = await uploadToDrive(req.file);
+    }
+    await createFlavor(req, res);
+  } catch (error) {
+    console.error("Erro na rota de criação de sabor:", error);
+    res.status(500).json({ error: "Erro ao processar upload" });
+  }
+});
 
 // gets
 routes.get("/products", getProducts);
 routes.get("/categories", getCategories);
 routes.get("/categories/:id", getCategoryById);
 routes.get("/display-settings", getDisplaySettings);
+routes.get("/flavors", getFlavors);
+routes.get("/flavors/:id", getFlavorById);
+routes.get("/categories/:categoryId/flavors", getFlavorsByCategoryId);
 
 // puts
 routes.put("/categories/:id", updateCategory);
@@ -75,7 +97,34 @@ routes.put("/products/:id", upload.single("image"), async (req, res) => {
     res.status(500).json({ error: "Erro ao processar upload" });
   }
 });
+routes.put("/flavors/:id", upload.single("image"), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const oldFlavor = await prisma.flavor.findUnique({ where: { id } });
+
+    if (req.file) {
+      if (oldFlavor?.imageUrl) {
+        const fileId = oldFlavor.imageUrl.split("id=")[1];
+        try {
+          await deleteFromDrive(fileId);
+        } catch (error: any) {
+          if (error.response?.status === 404) {
+            console.warn("Imagem antiga não encontrada, ignorando exclusão");
+          } else {
+            throw error;
+          }
+        }
+      }
+      req.body.imageUrl = await uploadToDrive(req.file);
+    }
+    await updateFlavor(req, res);
+  } catch (error) {
+    console.error("Erro na rota de atualização de sabor:", error);
+    res.status(500).json({ error: "Erro ao processar upload" });
+  }
+});
 
 // deletes
 routes.delete("/categories/:id", deleteCategory);
 routes.delete("/products/:id", deleteProduct);
+routes.delete("/flavors/:id", deleteFlavor);
