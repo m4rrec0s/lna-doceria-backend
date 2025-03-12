@@ -23,6 +23,8 @@ model User {
 model Category {
   id              String           @id @default(uuid())
   name            String
+  sellingType     String           @default("unit") // "unit" ou "package"
+  packageSizes    String? // Armazena as quantidades como JSON string: [4, 6, 8, 12, 100]
   products        Product[]
   displaySections DisplaySection[]
 }

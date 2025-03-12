@@ -14,6 +14,7 @@ import {
   updateCategory,
   deleteCategory,
   getCategories,
+  getCategoryById,
 } from "./controllers/categoryController";
 import {
   getDisplaySettings,
@@ -43,6 +44,7 @@ routes.post("/display-settings", saveDisplaySettings);
 // gets
 routes.get("/products", getProducts);
 routes.get("/categories", getCategories);
+routes.get("/categories/:id", getCategoryById);
 routes.get("/display-settings", getDisplaySettings);
 
 // puts
