@@ -37,11 +37,16 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
 
             case "custom":
               if (section.productIds) {
+                // Corrigindo: Garantir que productIds seja um array após o parse
                 const productIds = JSON.parse(section.productIds);
-                products = await prisma.product.findMany({
-                  where: { id: { in: productIds } },
-                  orderBy: { createdAt: "desc" },
-                });
+                if (Array.isArray(productIds) && productIds.length > 0) {
+                  products = await prisma.product.findMany({
+                    where: {
+                      id: { in: productIds },
+                    },
+                    orderBy: { createdAt: "desc" },
+                  });
+                }
               }
               break;
 
@@ -151,6 +156,7 @@ export const saveDisplaySettings = async (
           res.status(400).json({
             error: "Data de início deve ser anterior à data de término.",
           });
+
           return;
         }
 
@@ -175,6 +181,7 @@ export const saveDisplaySettings = async (
             error:
               "O formato das tags é inválido. Deve ser um array ou uma string JSON válida.",
           });
+
           return;
         }
       }
@@ -255,6 +262,7 @@ export const createDisplaySection = async (
         res.status(400).json({
           error: `Categoria com ID ${section.categoryId} não encontrada.`,
         });
+
         return;
       }
     }
@@ -283,7 +291,6 @@ export const createDisplaySection = async (
         res.status(400).json({
           error: "Data de início deve ser anterior à data de término.",
         });
-
         return;
       }
     }
