@@ -27,6 +27,9 @@ import {
 import {
   getDisplaySettings,
   saveDisplaySettings,
+  createDisplaySection,
+  updateDisplaySection,
+  deleteDisplaySection,
 } from "./controllers/displaySettingsController";
 import { prisma } from "./utils/prismaClient";
 
@@ -47,6 +50,7 @@ routes.post("/products", upload.single("image"), async (req, res) => {
   }
 });
 routes.post("/categories", createCategory);
+routes.post("/display-sections", createDisplaySection);
 routes.post("/display-settings", saveDisplaySettings);
 routes.post("/flavors", upload.single("image"), async (req, res) => {
   try {
@@ -123,8 +127,10 @@ routes.put("/flavors/:id", upload.single("image"), async (req, res) => {
     res.status(500).json({ error: "Erro ao processar upload" });
   }
 });
+routes.put("/display-sections/:id", updateDisplaySection);
 
 // deletes
 routes.delete("/categories/:id", deleteCategory);
 routes.delete("/products/:id", deleteProduct);
 routes.delete("/flavors/:id", deleteFlavor);
+routes.delete("/display-sections/:id", deleteDisplaySection);

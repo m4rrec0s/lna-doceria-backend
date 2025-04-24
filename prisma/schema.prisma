@@ -45,15 +45,18 @@ model Product {
 }
 
 model DisplaySection {
-  id         String   @id @default(uuid())
+  id         String    @id @default(uuid())
   title      String
-  type       String // "category" ou "custom"
-  active     Boolean  @default(true)
+  type       String // "category", "custom", "discounted", "new_arrivals", "best_sellers"
+  active     Boolean   @default(true)
   categoryId String?
-  productIds String?
+  productIds String? // Para "custom", armazenado como JSON
   order      Int
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  startDate  DateTime?
+  endDate    DateTime?
+  tags       String? // Tags para campanhas, armazenadas como JSON
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
