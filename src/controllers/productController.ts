@@ -7,19 +7,16 @@ export const createProduct = async (req: Request, res: Response) => {
     const { name, description, price, categoryIds, discount, imageUrl } =
       req.body;
 
-    // Validação básica
     if (!name || !description || !price || !imageUrl) {
       return res.status(400).json({ error: "Campos obrigatórios faltando" });
     }
 
-    // Converte categoryIds para array, aceitando string simples ou array
     let parsedCategoryIds: string[] = [];
     if (categoryIds) {
       if (Array.isArray(categoryIds)) {
         parsedCategoryIds = categoryIds; // Caso já seja um array
       } else {
         try {
-          // Tenta parsear como JSON (ex.: "[\"id1\", \"id2\"]")
           parsedCategoryIds = JSON.parse(categoryIds);
           if (!Array.isArray(parsedCategoryIds)) {
             throw new Error("Não é um array");
@@ -31,7 +28,6 @@ export const createProduct = async (req: Request, res: Response) => {
       }
     }
 
-    // Verifica se as categorias existem
     if (parsedCategoryIds.length > 0) {
       const existingCategories = await prisma.category.findMany({
         where: { id: { in: parsedCategoryIds } },
@@ -70,92 +66,31 @@ export const createProduct = async (req: Request, res: Response) => {
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
-    const { page = "1", per_page = "50", categoryId, name, id } = req.query;
+    const page = req.query.page ? parseInt(req.query.page as string) : 1;
+    const per_page = req.query.per_page
+      ? parseInt(req.query.per_page as string)
+      : 50;
+    const skip = (page - 1) * per_page;
 
-    const pageNumber = parseInt(page as string);
-    const perPage = parseInt(per_page as string);
-    const skip = (pageNumber - 1) * perPage;
+    // Abordagem ultra simplificada sem filtros complexos
+    const totalCount = await prisma.product.count();
 
-    const where: any = {};
+    const products = await prisma.product.findMany({
+      include: { categories: true },
+      orderBy: { createdAt: "desc" },
+      skip,
+      take: per_page,
+    });
 
-    if (id) {
-      where.id = id as string;
-    }
-
-    if (categoryId) {
-      where.categories = {
-        some: {
-          id: categoryId as string,
-        },
-      };
-    }
-
-    if (name) {
-      where.name = {
-        contains: name as string,
-        ...(process.env.NODE_ENV !== "production" && { mode: "insensitive" }),
-      };
-    }
-
-    try {
-      const totalCount = await prisma.product.count({ where });
-
-      const products = await prisma.product.findMany({
-        where,
-        include: { categories: true },
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: perPage,
-      });
-
-      res.json({
-        data: products,
-        pagination: {
-          total: totalCount,
-          page: pageNumber,
-          per_page: perPage,
-          total_pages: Math.ceil(totalCount / perPage),
-        },
-      });
-    } catch (queryError) {
-      console.error("Erro específico na consulta:", queryError);
-
-      if (process.env.NODE_ENV === "production") {
-        const basicWhere: any = {};
-
-        if (id) basicWhere.id = id as string;
-
-        if (categoryId) {
-          basicWhere.categories = {
-            some: { id: categoryId as string },
-          };
-        }
-
-        const products = await prisma.product.findMany({
-          where: basicWhere,
-          include: { categories: true },
-          orderBy: { createdAt: "desc" },
-          skip,
-          take: perPage,
-        });
-
-        const totalCount = await prisma.product.count({ where: basicWhere });
-
-        res.json({
-          data: products,
-          pagination: {
-            total: totalCount,
-            page: pageNumber,
-            per_page: perPage,
-            total_pages: Math.ceil(totalCount / perPage),
-          },
-          notice: "Busca simplificada devido a limitações técnicas.",
-        });
-        return;
-      } else {
-        throw queryError;
-      }
-    }
+    res.json({
+      data: products,
+      pagination: {
+        total: totalCount,
+        page: page,
+        per_page: per_page,
+        total_pages: Math.ceil(totalCount / per_page),
+      },
+    });
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
     res.status(500).json({

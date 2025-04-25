@@ -13,7 +13,6 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
     const formattedSections = await Promise.all(
       displaySections
         .filter((section) => {
-          // Filtrar seções baseadas em datas de início/fim
           if (!section.active) return false;
           if (section.startDate && section.startDate > now) return false;
           if (section.endDate && section.endDate < now) return false;
@@ -39,7 +38,6 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
               case "custom":
                 if (section.productIds) {
                   try {
-                    // Adicionando tratamento de erro mais robusto para o parsing
                     const productIds = JSON.parse(section.productIds);
                     if (Array.isArray(productIds) && productIds.length > 0) {
                       products = await prisma.product.findMany({
@@ -51,7 +49,6 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
                     }
                   } catch (parseError) {
                     console.error("Erro ao parsear productIds:", parseError);
-                    // Continua com produtos vazios se houver erro no parsing
                   }
                 }
                 break;
