@@ -29,6 +29,7 @@ import {
   createDisplaySection,
   updateDisplaySection,
   deleteDisplaySection,
+  updateAllDisplaySections,
 } from "./controllers/displaySettingsController";
 import { prisma } from "./utils/prismaClient";
 
@@ -126,6 +127,7 @@ routes.put("/flavors/:id", upload.single("image"), async (req, res) => {
   }
 });
 routes.put("/display-sections/:id", updateDisplaySection);
+routes.put("/display-sections", updateAllDisplaySections);
 
 // deletes
 routes.delete("/categories/:id", deleteCategory);

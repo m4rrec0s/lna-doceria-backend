@@ -325,6 +325,159 @@ export const updateDisplaySection = async (
   }
 };
 
+export const updateAllDisplaySections = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const sections = req.body;
+
+    if (!Array.isArray(sections)) {
+      res.status(400).json({
+        error: "Dados inválidos. É necessário enviar um array de seções.",
+      });
+      return;
+    }
+
+    type DisplaySectionUpdateResult = {
+      section: any; // Replace 'any' with the actual type if known
+      error: string;
+    };
+
+    const results: Array<DisplaySectionUpdateResult> = [];
+    const errors: Array<{ section: any; error: string }> = [];
+
+    // Usar transação para garantir atomicidade
+    await prisma.$transaction(async (tx) => {
+      for (const section of sections) {
+        try {
+          if (!section.id) {
+            errors.push({
+              section,
+              error: "ID da seção não fornecido",
+            });
+            continue;
+          }
+
+          // Verificar se seção existe
+          const existingSection = await tx.displaySection.findUnique({
+            where: { id: section.id },
+          });
+
+          if (!existingSection) {
+            errors.push({
+              section,
+              error: `Seção com ID ${section.id} não encontrada`,
+            });
+            continue;
+          }
+
+          // Validar tipo
+          if (section.type) {
+            const validTypes = [
+              "category",
+              "custom",
+              "discounted",
+              "new_arrivals",
+            ];
+            if (!validTypes.includes(section.type)) {
+              errors.push({
+                section,
+                error: `Tipo inválido: ${
+                  section.type
+                }. Tipos válidos: ${validTypes.join(", ")}`,
+              });
+              continue;
+            }
+          }
+
+          // Validar categoria
+          if (section.type === "category" && section.categoryId) {
+            const categoryExists = await tx.category.findUnique({
+              where: { id: section.categoryId },
+            });
+            if (!categoryExists) {
+              errors.push({
+                section,
+                error: `Categoria com ID ${section.categoryId} não encontrada.`,
+              });
+              continue;
+            }
+          }
+
+          // Validar produtos
+          if (section.type === "custom" && section.productIds) {
+            const productIds = Array.isArray(section.productIds)
+              ? section.productIds
+              : [];
+            const productsCount = await tx.product.count({
+              where: { id: { in: productIds } },
+            });
+            if (productsCount !== productIds.length) {
+              errors.push({
+                section,
+                error: "Alguns IDs de produtos são inválidos.",
+              });
+              continue;
+            }
+          }
+
+          // Validar datas
+          if (section.startDate && section.endDate) {
+            const start = new Date(section.startDate);
+            const end = new Date(section.endDate);
+            if (start > end) {
+              errors.push({
+                section,
+                error: "Data de início deve ser anterior à data de término.",
+              });
+              continue;
+            }
+          }
+
+          const updatedSection = await tx.displaySection.update({
+            where: { id: section.id },
+            data: {
+              title: section.title,
+              type: section.type,
+              active: section.active,
+              categoryId: section.categoryId,
+              productIds: section.productIds
+                ? JSON.stringify(section.productIds)
+                : undefined,
+              order: section.order,
+              startDate: section.startDate
+                ? new Date(section.startDate)
+                : undefined,
+              endDate: section.endDate ? new Date(section.endDate) : undefined,
+              tags: section.tags ? JSON.stringify(section.tags) : undefined,
+            },
+          });
+
+          results.push({ section: updatedSection, error: "" });
+        } catch (error) {
+          errors.push({
+            section,
+            error: `Erro ao processar seção: ${(error as Error).message}`,
+          });
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      updatedSections: results,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error) {
+    console.error("Erro ao atualizar seções:", error);
+    res.status(500).json({
+      error: "Erro ao atualizar seções",
+      details: (error as Error).message,
+    });
+  }
+};
+
 export const deleteDisplaySection = async (
   req: Request,
   res: Response
