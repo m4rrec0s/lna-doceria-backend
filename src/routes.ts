@@ -26,7 +26,6 @@ import {
 } from "./controllers/flavorController";
 import {
   getDisplaySettings,
-  saveDisplaySettings,
   createDisplaySection,
   updateDisplaySection,
   deleteDisplaySection,
@@ -51,7 +50,6 @@ routes.post("/products", upload.single("image"), async (req, res) => {
 });
 routes.post("/categories", createCategory);
 routes.post("/display-sections", createDisplaySection);
-routes.post("/display-settings", saveDisplaySettings);
 routes.post("/flavors", upload.single("image"), async (req, res) => {
   try {
     if (req.file) {
