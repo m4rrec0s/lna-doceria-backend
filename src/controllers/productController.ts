@@ -93,35 +93,69 @@ export const getProducts = async (req: Request, res: Response) => {
     if (name) {
       where.name = {
         contains: name as string,
-        mode: process.env.NODE_ENV === "production" ? undefined : "insensitive",
+        ...(process.env.NODE_ENV !== "production" && { mode: "insensitive" }),
       };
-
-      if (process.env.NODE_ENV === "production" && name) {
-        where.name = {
-          contains: (name as string).toLowerCase(),
-        };
-      }
     }
 
-    const totalCount = await prisma.product.count({ where });
+    try {
+      const totalCount = await prisma.product.count({ where });
 
-    const products = await prisma.product.findMany({
-      where,
-      include: { categories: true },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: perPage,
-    });
+      const products = await prisma.product.findMany({
+        where,
+        include: { categories: true },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: perPage,
+      });
 
-    res.json({
-      data: products,
-      pagination: {
-        total: totalCount,
-        page: pageNumber,
-        per_page: perPage,
-        total_pages: Math.ceil(totalCount / perPage),
-      },
-    });
+      res.json({
+        data: products,
+        pagination: {
+          total: totalCount,
+          page: pageNumber,
+          per_page: perPage,
+          total_pages: Math.ceil(totalCount / perPage),
+        },
+      });
+    } catch (queryError) {
+      console.error("Erro específico na consulta:", queryError);
+
+      if (process.env.NODE_ENV === "production") {
+        const basicWhere: any = {};
+
+        if (id) basicWhere.id = id as string;
+
+        if (categoryId) {
+          basicWhere.categories = {
+            some: { id: categoryId as string },
+          };
+        }
+
+        const products = await prisma.product.findMany({
+          where: basicWhere,
+          include: { categories: true },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: perPage,
+        });
+
+        const totalCount = await prisma.product.count({ where: basicWhere });
+
+        res.json({
+          data: products,
+          pagination: {
+            total: totalCount,
+            page: pageNumber,
+            per_page: perPage,
+            total_pages: Math.ceil(totalCount / perPage),
+          },
+          notice: "Busca simplificada devido a limitações técnicas.",
+        });
+        return;
+      } else {
+        throw queryError;
+      }
+    }
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
     res.status(500).json({
