@@ -93,8 +93,14 @@ export const getProducts = async (req: Request, res: Response) => {
     if (name) {
       where.name = {
         contains: name as string,
-        mode: "insensitive",
+        mode: process.env.NODE_ENV === "production" ? undefined : "insensitive",
       };
+
+      if (process.env.NODE_ENV === "production" && name) {
+        where.name = {
+          contains: (name as string).toLowerCase(),
+        };
+      }
     }
 
     const totalCount = await prisma.product.count({ where });
@@ -118,7 +124,13 @@ export const getProducts = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Erro ao buscar produtos:", error);
-    res.status(500).json({ error: "Erro interno ao buscar produtos" });
+    res.status(500).json({
+      error: "Erro interno ao buscar produtos",
+      details:
+        process.env.NODE_ENV === "development"
+          ? (error as Error).message
+          : undefined,
+    });
   }
 };
 

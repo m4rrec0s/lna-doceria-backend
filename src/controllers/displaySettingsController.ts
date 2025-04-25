@@ -22,64 +22,102 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
         .map(async (section) => {
           let products: Product[] = [];
 
-          switch (section.type) {
-            case "category":
-              if (section.categoryId) {
+          try {
+            switch (section.type) {
+              case "category":
+                if (section.categoryId) {
+                  products = await prisma.product.findMany({
+                    where: {
+                      categories: { some: { id: section.categoryId } },
+                    },
+                    orderBy: { createdAt: "desc" },
+                    take: 10,
+                  });
+                }
+                break;
+
+              case "custom":
+                if (section.productIds) {
+                  try {
+                    // Adicionando tratamento de erro mais robusto para o parsing
+                    const productIds = JSON.parse(section.productIds);
+                    if (Array.isArray(productIds) && productIds.length > 0) {
+                      products = await prisma.product.findMany({
+                        where: {
+                          id: { in: productIds },
+                        },
+                        orderBy: { createdAt: "desc" },
+                      });
+                    }
+                  } catch (parseError) {
+                    console.error("Erro ao parsear productIds:", parseError);
+                    // Continua com produtos vazios se houver erro no parsing
+                  }
+                }
+                break;
+
+              case "discounted":
                 products = await prisma.product.findMany({
                   where: {
-                    categories: { some: { id: section.categoryId } },
+                    discount: { not: null },
+                    AND: { discount: { gt: 0 } },
                   },
+                  orderBy: { discount: "desc" },
+                  take: 10,
+                });
+                break;
+
+              case "new_arrivals":
+                const thirtyDaysAgo = new Date();
+                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+                products = await prisma.product.findMany({
+                  where: { createdAt: { gte: thirtyDaysAgo } },
                   orderBy: { createdAt: "desc" },
                   take: 10,
                 });
-              }
-              break;
+                break;
+            }
+          } catch (sectionError) {
+            console.error(
+              `Erro ao processar seção ${section.id} (${section.title}):`,
+              sectionError
+            );
+            // Se houver erro no processamento de uma seção, continuamos com produtos vazios
+            // em vez de falhar toda a requisição
+          }
 
-            case "custom":
-              if (section.productIds) {
-                // Corrigindo: Garantir que productIds seja um array após o parse
-                const productIds = JSON.parse(section.productIds);
-                if (Array.isArray(productIds) && productIds.length > 0) {
-                  products = await prisma.product.findMany({
-                    where: {
-                      id: { in: productIds },
-                    },
-                    orderBy: { createdAt: "desc" },
-                  });
-                }
-              }
-              break;
+          // Tratamento seguro para conversão JSON
+          let productIdsArray;
+          let tagsArray;
 
-            case "discounted":
-              products = await prisma.product.findMany({
-                where: {
-                  discount: { not: null },
-                  AND: { discount: { gt: 0 } },
-                },
-                orderBy: { discount: "desc" },
-                take: 10,
-              });
-              break;
+          try {
+            productIdsArray = section.productIds
+              ? JSON.parse(section.productIds)
+              : undefined;
+          } catch (error) {
+            console.error(
+              `Erro ao parsear productIds da seção ${section.id}:`,
+              error
+            );
+            productIdsArray = undefined;
+          }
 
-            case "new_arrivals":
-              const thirtyDaysAgo = new Date();
-              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-              products = await prisma.product.findMany({
-                where: { createdAt: { gte: thirtyDaysAgo } },
-                orderBy: { createdAt: "desc" },
-                take: 10,
-              });
-              break;
+          try {
+            tagsArray = section.tags ? JSON.parse(section.tags) : undefined;
+          } catch (error) {
+            console.error(
+              `Erro ao parsear tags da seção ${section.id}:`,
+              error
+            );
+            tagsArray = undefined;
           }
 
           return {
             ...section,
             products,
-            productIds: section.productIds
-              ? JSON.parse(section.productIds)
-              : undefined,
-            tags: section.tags ? JSON.parse(section.tags) : undefined,
+            productIds: productIdsArray,
+            tags: tagsArray,
           };
         })
     );
@@ -87,7 +125,13 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
     res.json(formattedSections);
   } catch (error) {
     console.error("Erro ao buscar configurações de exibição:", error);
-    res.status(500).json({ error: "Erro ao buscar configurações de exibição" });
+    res.status(500).json({
+      error: "Erro ao buscar configurações de exibição",
+      details:
+        process.env.NODE_ENV === "development"
+          ? (error as Error).message
+          : undefined,
+    });
   }
 };
 
