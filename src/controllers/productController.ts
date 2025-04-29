@@ -103,6 +103,82 @@ export const getProducts = async (req: Request, res: Response) => {
   }
 };
 
+export const getActiveProducts = async (req: Request, res: Response) => {
+  try {
+    const page = req.query.page ? parseInt(req.query.page as string) : 1;
+    const per_page = req.query.per_page
+      ? parseInt(req.query.per_page as string)
+      : 50;
+    const skip = (page - 1) * per_page;
+
+    const products = await prisma.product.findMany({
+      where: { active: true },
+      skip,
+      take: per_page,
+      orderBy: { createdAt: "desc" },
+    });
+
+    const totalCount = await prisma.product.count({ where: { active: true } });
+
+    res.json({
+      data: products,
+      pagination: {
+        total: totalCount,
+        page: page,
+        per_page: per_page,
+        total_pages: Math.ceil(totalCount / per_page),
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao buscar produtos ativos:", error);
+    res.status(500).json({
+      error: "Erro interno ao buscar produtos ativos",
+      details:
+        process.env.NODE_ENV === "development"
+          ? (error as Error).message
+          : undefined,
+    });
+  }
+};
+
+export const getInactiveProducts = async (req: Request, res: Response) => {
+  try {
+    const page = req.query.page ? parseInt(req.query.page as string) : 1;
+    const per_page = req.query.per_page
+      ? parseInt(req.query.per_page as string)
+      : 50;
+    const skip = (page - 1) * per_page;
+
+    const products = await prisma.product.findMany({
+      where: { active: false },
+      skip,
+      take: per_page,
+      orderBy: { createdAt: "desc" },
+    });
+
+    const totalCount = await prisma.product.count({ where: { active: false } });
+
+    res.json({
+      data: products,
+      pagination: {
+        total: totalCount,
+        page: page,
+        per_page: per_page,
+        total_pages: Math.ceil(totalCount / per_page),
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao buscar produtos inativos:", error);
+    res.status(500).json({
+      error: "Erro interno ao buscar produtos inativos",
+      details:
+        process.env.NODE_ENV === "development"
+          ? (error as Error).message
+          : undefined,
+    });
+  }
+};
+
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

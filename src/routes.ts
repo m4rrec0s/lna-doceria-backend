@@ -6,6 +6,8 @@ import {
   getProducts,
   deleteProduct,
   updateProduct,
+  getActiveProducts,
+  getInactiveProducts,
 } from "./controllers/productController";
 import { upload } from "./config/multer";
 import { uploadToDrive, deleteFromDrive } from "./config/googleDriveConfig";
@@ -64,7 +66,8 @@ routes.post("/flavors", upload.single("image"), async (req, res) => {
 });
 
 // gets
-routes.get("/products", getProducts);
+routes.get("/products", getActiveProducts);
+routes.get("/products/inactive", getInactiveProducts);
 routes.get("/categories", getCategories);
 routes.get("/categories/:id", getCategoryById);
 routes.get("/display-settings", getDisplaySettings);
