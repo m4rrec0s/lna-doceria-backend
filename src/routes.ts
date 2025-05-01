@@ -4,8 +4,10 @@ import loginController from "./controllers/loginController";
 import {
   createProduct,
   getProducts,
+  getProductById,
   deleteProduct,
   updateProduct,
+  getAllProducts,
   // getActiveProducts,
   // getInactiveProducts,
 } from "./controllers/productController";
@@ -67,6 +69,8 @@ routes.post("/flavors", upload.single("image"), async (req, res) => {
 
 // gets
 routes.get("/products", getProducts);
+routes.get("/products/all", getAllProducts);
+routes.get("/products/:id", getProductById);
 // routes.get("/products/inactive", getInactiveProducts);
 routes.get("/categories", getCategories);
 routes.get("/categories/:id", getCategoryById);

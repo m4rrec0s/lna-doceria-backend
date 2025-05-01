@@ -99,7 +99,6 @@ export const updateFlavor = async (
       return;
     }
 
-    // Verificar se a categoria existe, se um categoryId foi fornecido
     if (categoryId) {
       const category = await prisma.category.findUnique({
         where: { id: categoryId },

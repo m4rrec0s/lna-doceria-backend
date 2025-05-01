@@ -11,7 +11,6 @@ export const createProduct = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Campos obrigatórios faltando" });
     }
 
-    // Simplifica a manipulação de categoryIds
     let parsedCategoryIds: string[] = [];
     if (categoryIds) {
       parsedCategoryIds = Array.isArray(categoryIds)
@@ -25,7 +24,6 @@ export const createProduct = async (req: Request, res: Response) => {
       }
     }
 
-    // Verifica se as categorias existem
     if (parsedCategoryIds.length > 0) {
       const existingCategories = await prisma.category.findMany({
         where: { id: { in: parsedCategoryIds } },
@@ -62,19 +60,18 @@ export const createProduct = async (req: Request, res: Response) => {
   }
 };
 
-export const getProducts = async (req: Request, res: Response) => {
+export const getAllProducts = async (req: Request, res: Response) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const per_page = parseInt(req.query.per_page as string) || 50;
     const skip = (page - 1) * per_page;
 
-    // Busca simplificada com tratamento de erro claro
     const [products, totalCount] = await Promise.all([
       prisma.product.findMany({
         skip,
         take: per_page,
         orderBy: { createdAt: "desc" },
-        include: { categories: true }, // Inclui categorias para consistência
+        include: { categories: true },
       }),
       prisma.product.count(),
     ]);
@@ -98,6 +95,75 @@ export const getProducts = async (req: Request, res: Response) => {
 
     res.status(500).json({
       error: "Erro interno ao buscar produtos",
+      details: error instanceof Error ? error.message : "Erro desconhecido",
+    });
+  }
+};
+
+export const getProducts = async (req: Request, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const per_page = parseInt(req.query.per_page as string) || 50;
+    const skip = (page - 1) * per_page;
+
+    const [products, totalCount] = await Promise.all([
+      prisma.product.findMany({
+        skip,
+        take: per_page,
+        where: {
+          active: true,
+        },
+        orderBy: { createdAt: "desc" },
+        include: { categories: true },
+      }),
+      prisma.product.count(),
+    ]);
+
+    res.json({
+      data: products,
+      pagination: {
+        total: totalCount,
+        page,
+        per_page,
+        total_pages: Math.ceil(totalCount / per_page),
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao buscar produtos:", {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+      prismaVersion: require("@prisma/client/package.json").version,
+      nodeEnv: process.env.NODE_ENV,
+    });
+
+    res.status(500).json({
+      error: "Erro interno ao buscar produtos",
+      details: error instanceof Error ? error.message : "Erro desconhecido",
+    });
+  }
+};
+
+export const getProductById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: { categories: true },
+    });
+
+    if (!product) {
+      res.status(404).json({ error: "Produto não encontrado" });
+      return;
+    }
+
+    res.json(product);
+  } catch (error) {
+    console.error("Erro ao buscar produto:", error);
+    res.status(500).json({
+      error: "Erro interno ao buscar produto",
       details: error instanceof Error ? error.message : "Erro desconhecido",
     });
   }
@@ -187,10 +253,16 @@ export const updateProduct = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Produto não encontrado" });
     }
 
-    const { name, description, price, categoryIds, discount, imageUrl } =
-      req.body;
+    const {
+      name,
+      description,
+      price,
+      active,
+      categoryIds,
+      discount,
+      imageUrl,
+    } = req.body;
 
-    // Simplifica a manipulação de categoryIds
     let parsedCategoryIds: string[] = [];
     if (categoryIds) {
       parsedCategoryIds = Array.isArray(categoryIds)
@@ -204,7 +276,6 @@ export const updateProduct = async (req: Request, res: Response) => {
       }
     }
 
-    // Verifica se as categorias existem
     if (parsedCategoryIds.length > 0) {
       const existingCategories = await prisma.category.findMany({
         where: { id: { in: parsedCategoryIds } },
@@ -221,6 +292,7 @@ export const updateProduct = async (req: Request, res: Response) => {
       description: description ?? oldProduct.description,
       price: price ? parseFloat(price) : oldProduct.price,
       discount: discount ? parseFloat(discount) : oldProduct.discount ?? null,
+      active: active !== undefined ? active : oldProduct.active,
       imageUrl: imageUrl ?? oldProduct.imageUrl,
     };
 

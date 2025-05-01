@@ -4,122 +4,152 @@ import { Product } from "@prisma/client";
 
 export const getDisplaySettings = async (req: Request, res: Response) => {
   try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 2;
+    const skip = (page - 1) * limit;
+
     const displaySections = await prisma.displaySection.findMany({
       orderBy: { order: "asc" },
       include: { category: true },
+      skip,
+      take: limit,
     });
 
+    const totalSections = await prisma.displaySection.count();
     const now = new Date();
+    const activeSections = displaySections.filter((section) => {
+      if (section.startDate && section.startDate > now) return false;
+      if (section.endDate && section.endDate < now) return false;
+      return true;
+    });
+
     const formattedSections = await Promise.all(
-      displaySections
-        .filter((section) => {
-          if (!section.active) return false;
-          if (section.startDate && section.startDate > now) return false;
-          if (section.endDate && section.endDate < now) return false;
-          return true;
-        })
-        .map(async (section) => {
-          let products: Product[] = [];
+      activeSections.map(async (section) => {
+        let products: Product[] = [];
 
-          try {
-            switch (section.type) {
-              case "category":
-                if (section.categoryId) {
-                  products = await prisma.product.findMany({
-                    where: {
-                      categories: { some: { id: section.categoryId } },
-                    },
-                    orderBy: { createdAt: "desc" },
-                    take: 10,
-                  });
-                }
-                break;
-
-              case "custom":
-                if (section.productIds) {
-                  try {
-                    const productIds = JSON.parse(section.productIds);
-                    if (Array.isArray(productIds) && productIds.length > 0) {
-                      products = await prisma.product.findMany({
-                        where: {
-                          id: { in: productIds },
-                        },
-                        orderBy: { createdAt: "desc" },
-                      });
-                    }
-                  } catch (parseError) {
-                    console.error("Erro ao parsear productIds:", parseError);
-                  }
-                }
-                break;
-
-              case "discounted":
+        try {
+          switch (section.type) {
+            case "category":
+              if (section.categoryId) {
                 products = await prisma.product.findMany({
                   where: {
-                    discount: { not: null },
-                    AND: { discount: { gt: 0 } },
+                    categories: { some: { id: section.categoryId } },
+                    active: true,
                   },
-                  orderBy: { discount: "desc" },
-                  take: 10,
-                });
-                break;
-
-              case "new_arrivals":
-                const thirtyDaysAgo = new Date();
-                thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-                products = await prisma.product.findMany({
-                  where: { createdAt: { gte: thirtyDaysAgo } },
                   orderBy: { createdAt: "desc" },
                   take: 10,
                 });
-                break;
-            }
-          } catch (sectionError) {
-            console.error(
-              `Erro ao processar seção ${section.id} (${section.title}):`,
-              sectionError
-            );
-            // Se houver erro no processamento de uma seção, continuamos com produtos vazios
-            // em vez de falhar toda a requisição
+              }
+              break;
+
+            case "custom":
+              if (section.productIds) {
+                try {
+                  let productIds: string[] = [];
+
+                  try {
+                    const cleanString = section.productIds.replace(/\\"/g, '"');
+
+                    const parsedData = JSON.parse(cleanString);
+
+                    if (Array.isArray(parsedData)) {
+                      productIds = parsedData;
+                    } else if (typeof parsedData === "string") {
+                      try {
+                        const secondParse = JSON.parse(parsedData);
+                        if (Array.isArray(secondParse)) {
+                          productIds = secondParse;
+                        }
+                      } catch (e) {
+                        console.error("Erro no segundo parse:", e);
+                      }
+                    }
+                  } catch (parseError) {
+                    const guidPattern =
+                      /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+                    const matches = section.productIds.match(guidPattern);
+
+                    if (matches && matches.length > 0) {
+                      productIds = matches;
+                    }
+                  }
+
+                  if (productIds.length > 0) {
+                    products = await prisma.product.findMany({
+                      where: {
+                        id: { in: productIds },
+                        active: true,
+                      },
+                      include: {
+                        categories: true,
+                      },
+                    });
+
+                    if (products.length > 0) {
+                      const productMap = new Map(
+                        products.map((p) => [p.id, p])
+                      );
+                      products = productIds
+                        .map((id) => productMap.get(id))
+                        .filter(Boolean) as Product[];
+                    }
+                  }
+                } catch (error) {
+                  console.error(
+                    `Erro ao processar produtos da seção ${section.id}:`,
+                    error
+                  );
+                }
+              }
+              break;
+
+            case "discounted":
+              products = await prisma.product.findMany({
+                where: { discount: { not: null, gt: 0 }, active: true },
+                orderBy: { discount: "desc" },
+                include: { categories: true },
+                take: 10,
+              });
+              break;
+
+            case "new_arrivals":
+              const thirtyDaysAgo = new Date();
+              thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+              products = await prisma.product.findMany({
+                where: { createdAt: { gte: thirtyDaysAgo } },
+                orderBy: { createdAt: "desc" },
+                take: 10,
+              });
+              break;
           }
+        } catch (sectionError) {
+          console.error(
+            `Erro ao processar seção ${section.id} (${section.title}):`,
+            sectionError
+          );
+        }
 
-          // Tratamento seguro para conversão JSON
-          let productIdsArray;
-          let tagsArray;
+        const productIdsArray = section.productIds
+          ? JSON.parse(section.productIds)
+          : [];
+        const tagsArray = section.tags ? JSON.parse(section.tags) : [];
 
-          try {
-            productIdsArray = section.productIds
-              ? JSON.parse(section.productIds)
-              : undefined;
-          } catch (error) {
-            console.error(
-              `Erro ao parsear productIds da seção ${section.id}:`,
-              error
-            );
-            productIdsArray = undefined;
-          }
-
-          try {
-            tagsArray = section.tags ? JSON.parse(section.tags) : undefined;
-          } catch (error) {
-            console.error(
-              `Erro ao parsear tags da seção ${section.id}:`,
-              error
-            );
-            tagsArray = undefined;
-          }
-
-          return {
-            ...section,
-            products,
-            productIds: productIdsArray,
-            tags: tagsArray,
-          };
-        })
+        return {
+          ...section,
+          productIds: productIdsArray,
+          tags: tagsArray,
+          products: products || [],
+        };
+      })
     );
 
-    res.json(formattedSections);
+    res.json({
+      sections: formattedSections,
+      total: totalSections,
+      page,
+      limit,
+      hasMore: skip + formattedSections.length < totalSections,
+    });
   } catch (error) {
     console.error("Erro ao buscar configurações de exibição:", error);
     res.status(500).json({
@@ -138,9 +168,8 @@ export const createDisplaySection = async (
 ): Promise<void> => {
   try {
     const section = req.body;
-
-    // Validar tipo
     const validTypes = ["category", "custom", "discounted", "new_arrivals"];
+
     if (!validTypes.includes(section.type)) {
       res.status(400).json({
         error: `Tipo inválido: ${
@@ -150,7 +179,6 @@ export const createDisplaySection = async (
       return;
     }
 
-    // Validar categoria
     if (section.type === "category" && section.categoryId) {
       const categoryExists = await prisma.category.findUnique({
         where: { id: section.categoryId },
@@ -159,12 +187,10 @@ export const createDisplaySection = async (
         res.status(400).json({
           error: `Categoria com ID ${section.categoryId} não encontrada.`,
         });
-
         return;
       }
     }
 
-    // Validar produtos
     if (section.type === "custom" && section.productIds) {
       const productIds = Array.isArray(section.productIds)
         ? section.productIds
@@ -180,7 +206,6 @@ export const createDisplaySection = async (
       }
     }
 
-    // Validar datas
     if (section.startDate && section.endDate) {
       const start = new Date(section.startDate);
       const end = new Date(section.endDate);
@@ -192,7 +217,6 @@ export const createDisplaySection = async (
       }
     }
 
-    // Obter última ordem
     const lastSection = await prisma.displaySection.findFirst({
       orderBy: { order: "desc" },
     });
@@ -207,7 +231,7 @@ export const createDisplaySection = async (
         productIds: section.productIds
           ? JSON.stringify(section.productIds)
           : null,
-        order: section.order !== undefined ? section.order : nextOrder,
+        order: section.order ?? nextOrder,
         startDate: section.startDate ? new Date(section.startDate) : null,
         endDate: section.endDate ? new Date(section.endDate) : null,
         tags: section.tags ? JSON.stringify(section.tags) : null,
@@ -232,32 +256,24 @@ export const updateDisplaySection = async (
     const { id } = req.params;
     const section = req.body;
 
-    // Verificar se seção existe
     const existingSection = await prisma.displaySection.findUnique({
       where: { id },
     });
-
     if (!existingSection) {
-      res.status(404).json({
-        error: "Seção não encontrada",
+      res.status(404).json({ error: "Seção não encontrada" });
+      return;
+    }
+
+    const validTypes = ["category", "custom", "discounted", "new_arrivals"];
+    if (section.type && !validTypes.includes(section.type)) {
+      res.status(400).json({
+        error: `Tipo inválido: ${
+          section.type
+        }. Tipos válidos: ${validTypes.join(", ")}`,
       });
       return;
     }
 
-    // Validar tipo
-    if (section.type) {
-      const validTypes = ["category", "custom", "discounted", "new_arrivals"];
-      if (!validTypes.includes(section.type)) {
-        res.status(400).json({
-          error: `Tipo inválido: ${
-            section.type
-          }. Tipos válidos: ${validTypes.join(", ")}`,
-        });
-        return;
-      }
-    }
-
-    // Validar categoria
     if (section.type === "category" && section.categoryId) {
       const categoryExists = await prisma.category.findUnique({
         where: { id: section.categoryId },
@@ -270,7 +286,6 @@ export const updateDisplaySection = async (
       }
     }
 
-    // Validar produtos
     if (section.type === "custom" && section.productIds) {
       const productIds = Array.isArray(section.productIds)
         ? section.productIds
@@ -286,7 +301,6 @@ export const updateDisplaySection = async (
       }
     }
 
-    // Validar datas
     if (section.startDate && section.endDate) {
       const start = new Date(section.startDate);
       const end = new Date(section.endDate);
@@ -301,17 +315,23 @@ export const updateDisplaySection = async (
     const updatedSection = await prisma.displaySection.update({
       where: { id },
       data: {
-        title: section.title,
-        type: section.type,
-        active: section.active,
-        categoryId: section.categoryId,
+        title: section.title ?? existingSection.title,
+        type: section.type ?? existingSection.type,
+        active: section.active ?? existingSection.active,
+        categoryId: section.categoryId ?? existingSection.categoryId,
         productIds: section.productIds
           ? JSON.stringify(section.productIds)
-          : undefined,
-        order: section.order,
-        startDate: section.startDate ? new Date(section.startDate) : undefined,
-        endDate: section.endDate ? new Date(section.endDate) : undefined,
-        tags: section.tags ? JSON.stringify(section.tags) : undefined,
+          : existingSection.productIds,
+        order: section.order ?? existingSection.order,
+        startDate: section.startDate
+          ? new Date(section.startDate)
+          : existingSection.startDate,
+        endDate: section.endDate
+          ? new Date(section.endDate)
+          : existingSection.endDate,
+        tags: section.tags
+          ? JSON.stringify(section.tags)
+          : existingSection.tags,
       },
     });
 
@@ -339,128 +359,114 @@ export const updateAllDisplaySections = async (
       return;
     }
 
-    type DisplaySectionUpdateResult = {
-      section: any; // Replace 'any' with the actual type if known
+    interface UpdateResult {
+      section: any;
       error: string;
-    };
+    }
 
-    const results: Array<DisplaySectionUpdateResult> = [];
-    const errors: Array<{ section: any; error: string }> = [];
+    interface ErrorResult {
+      section: any;
+      error: string;
+    }
 
-    // Usar transação para garantir atomicidade
+    const results: UpdateResult[] = [];
+    const errors: ErrorResult[] = [];
+
     await prisma.$transaction(async (tx) => {
       for (const section of sections) {
-        try {
-          if (!section.id) {
-            errors.push({
-              section,
-              error: "ID da seção não fornecido",
-            });
-            continue;
-          }
+        if (!section.id) {
+          errors.push({ section, error: "ID da seção não fornecido" });
+          continue;
+        }
 
-          // Verificar se seção existe
-          const existingSection = await tx.displaySection.findUnique({
-            where: { id: section.id },
-          });
+        const existingSection = await tx.displaySection.findUnique({
+          where: { id: section.id },
+        });
 
-          if (!existingSection) {
-            errors.push({
-              section,
-              error: `Seção com ID ${section.id} não encontrada`,
-            });
-            continue;
-          }
-
-          // Validar tipo
-          if (section.type) {
-            const validTypes = [
-              "category",
-              "custom",
-              "discounted",
-              "new_arrivals",
-            ];
-            if (!validTypes.includes(section.type)) {
-              errors.push({
-                section,
-                error: `Tipo inválido: ${
-                  section.type
-                }. Tipos válidos: ${validTypes.join(", ")}`,
-              });
-              continue;
-            }
-          }
-
-          // Validar categoria
-          if (section.type === "category" && section.categoryId) {
-            const categoryExists = await tx.category.findUnique({
-              where: { id: section.categoryId },
-            });
-            if (!categoryExists) {
-              errors.push({
-                section,
-                error: `Categoria com ID ${section.categoryId} não encontrada.`,
-              });
-              continue;
-            }
-          }
-
-          // Validar produtos
-          if (section.type === "custom" && section.productIds) {
-            const productIds = Array.isArray(section.productIds)
-              ? section.productIds
-              : [];
-            const productsCount = await tx.product.count({
-              where: { id: { in: productIds } },
-            });
-            if (productsCount !== productIds.length) {
-              errors.push({
-                section,
-                error: "Alguns IDs de produtos são inválidos.",
-              });
-              continue;
-            }
-          }
-
-          // Validar datas
-          if (section.startDate && section.endDate) {
-            const start = new Date(section.startDate);
-            const end = new Date(section.endDate);
-            if (start > end) {
-              errors.push({
-                section,
-                error: "Data de início deve ser anterior à data de término.",
-              });
-              continue;
-            }
-          }
-
-          const updatedSection = await tx.displaySection.update({
-            where: { id: section.id },
-            data: {
-              title: section.title,
-              type: section.type,
-              active: section.active,
-              categoryId: section.categoryId,
-              productIds: section.productIds
-                ? JSON.stringify(section.productIds)
-                : undefined,
-              order: section.order,
-              startDate: section.startDate
-                ? new Date(section.startDate)
-                : undefined,
-              endDate: section.endDate ? new Date(section.endDate) : undefined,
-              tags: section.tags ? JSON.stringify(section.tags) : undefined,
-            },
-          });
-
-          results.push({ section: updatedSection, error: "" });
-        } catch (error) {
+        if (!existingSection) {
           errors.push({
             section,
-            error: `Erro ao processar seção: ${(error as Error).message}`,
+            error: `Seção com ID ${section.id} não encontrada`,
           });
+          continue;
         }
+
+        const validTypes = ["category", "custom", "discounted", "new_arrivals"];
+        if (section.type && !validTypes.includes(section.type)) {
+          errors.push({
+            section,
+            error: `Tipo inválido: ${
+              section.type
+            }. Tipos válidos: ${validTypes.join(", ")}`,
+          });
+          continue;
+        }
+
+        if (section.type === "category" && section.categoryId) {
+          const categoryExists = await tx.category.findUnique({
+            where: { id: section.categoryId },
+          });
+          if (!categoryExists) {
+            errors.push({
+              section,
+              error: `Categoria com ID ${section.categoryId} não encontrada.`,
+            });
+            continue;
+          }
+        }
+
+        if (section.type === "custom" && section.productIds) {
+          const productIds = Array.isArray(section.productIds)
+            ? section.productIds
+            : [];
+          const productsCount = await tx.product.count({
+            where: { id: { in: productIds } },
+          });
+          if (productsCount !== productIds.length) {
+            errors.push({
+              section,
+              error: "Alguns IDs de produtos são inválidos.",
+            });
+            continue;
+          }
+        }
+
+        if (section.startDate && section.endDate) {
+          const start = new Date(section.startDate);
+          const end = new Date(section.endDate);
+          if (start > end) {
+            errors.push({
+              section,
+              error: "Data de início deve ser anterior à data de término.",
+            });
+            continue;
+          }
+        }
+
+        const updatedSection = await tx.displaySection.update({
+          where: { id: section.id },
+          data: {
+            title: section.title ?? existingSection.title,
+            type: section.type ?? existingSection.type,
+            active: section.active ?? existingSection.active,
+            categoryId: section.categoryId ?? existingSection.categoryId,
+            productIds: section.productIds
+              ? JSON.stringify(section.productIds)
+              : existingSection.productIds,
+            order: section.order ?? existingSection.order,
+            startDate: section.startDate
+              ? new Date(section.startDate)
+              : existingSection.startDate,
+            endDate: section.endDate
+              ? new Date(section.endDate)
+              : existingSection.endDate,
+            tags: section.tags
+              ? JSON.stringify(section.tags)
+              : existingSection.tags,
+          },
+        });
+
+        results.push({ section: updatedSection, error: "" });
       }
     });
 
@@ -485,26 +491,18 @@ export const deleteDisplaySection = async (
   try {
     const { id } = req.params;
 
-    // Verificar se seção existe
     const existingSection = await prisma.displaySection.findUnique({
       where: { id },
     });
 
     if (!existingSection) {
-      res.status(404).json({
-        error: "Seção não encontrada",
-      });
+      res.status(404).json({ error: "Seção não encontrada" });
       return;
     }
 
-    await prisma.displaySection.delete({
-      where: { id },
-    });
+    await prisma.displaySection.delete({ where: { id } });
 
-    res.json({
-      success: true,
-      message: "Seção excluída com sucesso",
-    });
+    res.json({ success: true, message: "Seção excluída com sucesso" });
   } catch (error) {
     console.error("Erro ao excluir seção:", error);
     res.status(500).json({
