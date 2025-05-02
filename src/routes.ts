@@ -5,6 +5,7 @@ import {
   createProduct,
   getProducts,
   getProductById,
+  getProductsByCategoryId,
   deleteProduct,
   updateProduct,
   getAllProducts,
@@ -30,6 +31,7 @@ import {
 } from "./controllers/flavorController";
 import {
   getDisplaySettings,
+  getDisplaySectionById,
   createDisplaySection,
   updateDisplaySection,
   deleteDisplaySection,
@@ -71,10 +73,12 @@ routes.post("/flavors", upload.single("image"), async (req, res) => {
 routes.get("/products", getProducts);
 routes.get("/products/all", getAllProducts);
 routes.get("/products/:id", getProductById);
+routes.get("/products/category/:id", getProductsByCategoryId);
 // routes.get("/products/inactive", getInactiveProducts);
 routes.get("/categories", getCategories);
 routes.get("/categories/:id", getCategoryById);
 routes.get("/display-settings", getDisplaySettings);
+routes.get("/display-sections/:id", getDisplaySectionById);
 routes.get("/flavors", getFlavors);
 routes.get("/flavors/:id", getFlavorById);
 routes.get("/categories/:categoryId/flavors", getFlavorsByCategoryId);

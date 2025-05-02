@@ -245,6 +245,74 @@ export const getInactiveProducts = async (req: Request, res: Response) => {
   }
 };
 
+export const getProductsByCategoryId = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const per_page = parseInt(req.query.per_page as string) || 50;
+    const skip = (page - 1) * per_page;
+
+    if (!id) {
+      res.status(400).json({ error: "Category ID is required" });
+      return;
+    }
+
+    const categoryExists = await prisma.category.findUnique({
+      where: { id },
+    });
+
+    if (!categoryExists) {
+      res.status(404).json({ error: "Category not found" });
+      return;
+    }
+
+    const [products, totalCount] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          categories: {
+            some: { id },
+          },
+          active: true,
+        },
+        skip,
+        take: per_page,
+        orderBy: { createdAt: "desc" },
+        include: { categories: true },
+      }),
+      prisma.product.count({
+        where: {
+          categories: {
+            some: { id }, // Alterado para usar a variável id
+          },
+          active: true,
+        },
+      }),
+    ]);
+
+    res.json({
+      data: products,
+      pagination: {
+        total: totalCount,
+        page,
+        per_page,
+        total_pages: Math.ceil(totalCount / per_page),
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching products by category:", error);
+    res.status(500).json({
+      error: "Internal error while fetching products by category",
+      details:
+        process.env.NODE_ENV === "development"
+          ? (error as Error).message
+          : undefined,
+    });
+  }
+};
+
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

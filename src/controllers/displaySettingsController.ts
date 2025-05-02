@@ -162,6 +162,145 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
   }
 };
 
+export const getDisplaySectionById = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const section = await prisma.displaySection.findUnique({
+      where: { id },
+      include: { category: true },
+    });
+
+    if (!section) {
+      res.status(404).json({ error: "Seção não encontrada" });
+      return;
+    }
+
+    let products: Product[] = [];
+
+    try {
+      switch (section.type) {
+        case "category":
+          if (section.categoryId) {
+            products = await prisma.product.findMany({
+              where: {
+                categories: { some: { id: section.categoryId } },
+                active: true,
+              },
+              orderBy: { createdAt: "desc" },
+              take: 10,
+            });
+          }
+          break;
+
+        case "custom":
+          if (section.productIds) {
+            try {
+              let productIds: string[] = [];
+
+              try {
+                const cleanString = section.productIds.replace(/\\"/g, '"');
+                const parsedData = JSON.parse(cleanString);
+
+                if (Array.isArray(parsedData)) {
+                  productIds = parsedData;
+                } else if (typeof parsedData === "string") {
+                  try {
+                    const secondParse = JSON.parse(parsedData);
+                    if (Array.isArray(secondParse)) {
+                      productIds = secondParse;
+                    }
+                  } catch (e) {
+                    console.error("Erro no segundo parse:", e);
+                  }
+                }
+              } catch (parseError) {
+                const guidPattern =
+                  /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/gi;
+                const matches = section.productIds.match(guidPattern);
+
+                if (matches && matches.length > 0) {
+                  productIds = matches;
+                }
+              }
+
+              if (productIds.length > 0) {
+                products = await prisma.product.findMany({
+                  where: {
+                    id: { in: productIds },
+                    active: true,
+                  },
+                  include: {
+                    categories: true,
+                  },
+                });
+
+                if (products.length > 0) {
+                  const productMap = new Map(products.map((p) => [p.id, p]));
+                  products = productIds
+                    .map((id) => productMap.get(id))
+                    .filter(Boolean) as Product[];
+                }
+              }
+            } catch (error) {
+              console.error(
+                `Erro ao processar produtos da seção ${section.id}:`,
+                error
+              );
+            }
+          }
+          break;
+
+        case "discounted":
+          products = await prisma.product.findMany({
+            where: { discount: { not: null, gt: 0 }, active: true },
+            orderBy: { discount: "desc" },
+            include: { categories: true },
+            take: 10,
+          });
+          break;
+
+        case "new_arrivals":
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          products = await prisma.product.findMany({
+            where: { createdAt: { gte: thirtyDaysAgo }, active: true },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          });
+          break;
+      }
+    } catch (sectionError) {
+      console.error(
+        `Erro ao processar seção ${section.id} (${section.title}):`,
+        sectionError
+      );
+    }
+
+    const productIdsArray = section.productIds
+      ? JSON.parse(section.productIds)
+      : [];
+
+    const tagsArray = section.tags ? JSON.parse(section.tags) : [];
+
+    res.json({
+      ...section,
+      productIds: productIdsArray,
+      tags: tagsArray,
+      products: products || [],
+    });
+  } catch (error) {
+    console.error("Erro ao buscar seção:", error);
+    res.status(500).json({
+      error: "Erro ao buscar seção",
+      details: (error as Error).message,
+    });
+  }
+};
+
 export const createDisplaySection = async (
   req: Request,
   res: Response
