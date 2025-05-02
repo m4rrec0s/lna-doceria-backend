@@ -313,6 +313,71 @@ export const getProductsByCategoryId = async (
   }
 };
 
+export const getProductBySearch = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { search } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const per_page = parseInt(req.query.per_page as string) || 50;
+    const skip = (page - 1) * per_page;
+
+    if (!search) {
+      res.status(400).json({ error: "Campo de busca não pode ser vazio" });
+      return;
+    }
+
+    const [products, totalCount] = await Promise.all([
+      prisma.product.findMany({
+        where: {
+          OR: [
+            { name: { contains: search as string, mode: "insensitive" } },
+            {
+              description: { contains: search as string, mode: "insensitive" },
+            },
+          ],
+          active: true,
+        },
+        skip,
+        take: per_page,
+        orderBy: { createdAt: "desc" },
+        include: { categories: true },
+      }),
+      prisma.product.count({
+        where: {
+          OR: [
+            { name: { contains: search as string, mode: "insensitive" } },
+            {
+              description: { contains: search as string, mode: "insensitive" },
+            },
+          ],
+          active: true,
+        },
+      }),
+    ]);
+
+    res.json({
+      data: products,
+      pagination: {
+        total: totalCount,
+        page,
+        per_page,
+        total_pages: Math.ceil(totalCount / per_page),
+      },
+    });
+  } catch (error) {
+    console.error("Erro ao buscar produtos:", error);
+    res.status(500).json({
+      error: "Erro interno ao buscar produtos",
+      details:
+        process.env.NODE_ENV === "development"
+          ? (error as Error).message
+          : undefined,
+    });
+  }
+};
+
 export const updateProduct = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;

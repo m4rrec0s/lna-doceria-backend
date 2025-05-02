@@ -37,6 +37,11 @@ import {
   deleteDisplaySection,
   updateAllDisplaySections,
 } from "./controllers/displaySettingsController";
+import {
+  searchProducts,
+  searchCategories,
+  searchFlavors,
+} from "./controllers/searchController";
 import { prisma } from "./utils/prismaClient";
 
 export const routes = Router();
@@ -74,6 +79,9 @@ routes.get("/products", getProducts);
 routes.get("/products/all", getAllProducts);
 routes.get("/products/:id", getProductById);
 routes.get("/products/category/:id", getProductsByCategoryId);
+routes.get("/search/products", searchProducts);
+routes.get("/search/categories", searchCategories);
+routes.get("/search/flavors", searchFlavors);
 // routes.get("/products/inactive", getInactiveProducts);
 routes.get("/categories", getCategories);
 routes.get("/categories/:id", getCategoryById);
