@@ -18,82 +18,65 @@ export const searchProducts = async (
 
     const searchTerm = query as string;
 
-    // Busca produtos que correspondem ao termo de pesquisa no nome, descrição
-    // ou que pertençam a uma categoria com o nome correspondente
-    // ou que tenham um sabor com nome correspondente
-    const [products, totalCount] = await Promise.all([
-      prisma.product.findMany({
-        where: {
-          OR: [
-            // Busca por nome do produto
-            { name: { contains: searchTerm, mode: "insensitive" } },
-            // Busca por descrição do produto
-            { description: { contains: searchTerm, mode: "insensitive" } },
-            // Busca por categoria
-            {
-              categories: {
-                some: {
-                  name: { contains: searchTerm, mode: "insensitive" },
-                },
-              },
-            },
-            // Busca por sabor (produtos que pertencem a categorias que têm sabores com esse nome)
-            {
-              categories: {
-                some: {
-                  flavors: {
-                    some: {
-                      name: { contains: searchTerm, mode: "insensitive" },
-                    },
-                  },
-                },
-              },
-            },
-          ],
-          active: true,
-        },
-        skip,
-        take: per_page,
-        orderBy: { createdAt: "desc" },
-        include: {
-          categories: {
-            include: {
-              flavors: true,
-            },
+    const nameMatchProducts = await prisma.product.findMany({
+      where: {
+        name: { contains: searchTerm, mode: "insensitive" },
+        active: true,
+      },
+      include: {
+        categories: {
+          include: {
+            flavors: true,
           },
         },
-      }),
-      prisma.product.count({
-        where: {
-          OR: [
-            { name: { contains: searchTerm, mode: "insensitive" } },
-            { description: { contains: searchTerm, mode: "insensitive" } },
-            {
-              categories: {
-                some: {
-                  name: { contains: searchTerm, mode: "insensitive" },
-                },
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const nameMatchIds = nameMatchProducts.map((product) => product.id);
+
+    const otherMatchProducts = await prisma.product.findMany({
+      where: {
+        id: { notIn: nameMatchIds },
+        OR: [
+          { description: { contains: searchTerm, mode: "insensitive" } },
+          {
+            categories: {
+              some: {
+                name: { contains: searchTerm, mode: "insensitive" },
               },
             },
-            {
-              categories: {
-                some: {
-                  flavors: {
-                    some: {
-                      name: { contains: searchTerm, mode: "insensitive" },
-                    },
+          },
+          {
+            categories: {
+              some: {
+                flavors: {
+                  some: {
+                    name: { contains: searchTerm, mode: "insensitive" },
                   },
                 },
               },
             },
-          ],
-          active: true,
+          },
+        ],
+        active: true,
+      },
+      include: {
+        categories: {
+          include: {
+            flavors: true,
+          },
         },
-      }),
-    ]);
+      },
+      orderBy: { name: "asc" },
+    });
+
+    const allProducts = [...nameMatchProducts, ...otherMatchProducts];
+    const totalCount = allProducts.length;
+    const paginatedProducts = allProducts.slice(skip, skip + per_page);
 
     res.json({
-      data: products,
+      data: paginatedProducts,
       pagination: {
         total: totalCount,
         page,
