@@ -70,7 +70,7 @@ export const getAllProducts = async (req: Request, res: Response) => {
       prisma.product.findMany({
         skip,
         take: per_page,
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "asc" },
         include: { categories: true },
       }),
       prisma.product.count(),
@@ -113,7 +113,7 @@ export const getProducts = async (req: Request, res: Response) => {
         where: {
           active: true,
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: { createdAt: "asc" },
         include: { categories: true },
       }),
       prisma.product.count(),
