@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider   = "prisma-client-js"
   engineType = "binary"
 }
 
@@ -38,6 +38,8 @@ model Product {
   description String
   price       Float
   discount    Float?
+  minFlavors  Int        @default(0)
+  maxFlavors  Int        @default(0)
   imageUrl    String
   active      Boolean    @default(true)
   categories  Category[]

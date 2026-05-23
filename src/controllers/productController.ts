@@ -52,10 +52,41 @@ const parseStringArray = (value: unknown, fieldName: string) => {
   }
 };
 
+const parseFlavorRange = (minValue: unknown, maxValue: unknown) => {
+  const minFlavors = Number(minValue ?? 0);
+  const maxFlavors = Number(maxValue ?? 0);
+
+  if (
+    Number.isNaN(minFlavors) ||
+    Number.isNaN(maxFlavors) ||
+    minFlavors < 0 ||
+    maxFlavors < 0
+  ) {
+    return { error: "Valores de sabores inválidos" };
+  }
+
+  if (maxFlavors < minFlavors) {
+    return { error: "maxFlavors deve ser maior ou igual a minFlavors" };
+  }
+
+  return {
+    minFlavors: Math.floor(minFlavors),
+    maxFlavors: Math.floor(maxFlavors),
+  };
+};
+
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const { name, description, price, categoryIds, discount, imageUrl } =
-      req.body;
+    const {
+      name,
+      description,
+      price,
+      categoryIds,
+      discount,
+      imageUrl,
+      minFlavors,
+      maxFlavors,
+    } = req.body;
 
     if (!name || !description || !price || !imageUrl) {
       return res.status(400).json({ error: "Campos obrigatórios faltando" });
@@ -79,6 +110,11 @@ export const createProduct = async (req: Request, res: Response) => {
     }
 
     const discountValue = discount ? parseFloat(discount) : null;
+    const flavorRange = parseFlavorRange(minFlavors, maxFlavors);
+    if ("error" in flavorRange) {
+      return res.status(400).json({ error: flavorRange.error });
+    }
+
     const product = await prisma.product.create({
       data: {
         name,
@@ -86,6 +122,8 @@ export const createProduct = async (req: Request, res: Response) => {
         price: parseFloat(price),
         imageUrl,
         discount: discountValue,
+        minFlavors: flavorRange.minFlavors,
+        maxFlavors: flavorRange.maxFlavors,
         categories: parsedCategoryIds.length
           ? { connect: parsedCategoryIds.map((id) => ({ id })) }
           : undefined,
@@ -372,7 +410,19 @@ export const updateProduct = async (req: Request, res: Response) => {
       categoryIds,
       discount,
       imageUrl,
+      minFlavors,
+      maxFlavors,
     } = req.body;
+
+    const parsedMinFlavors =
+      minFlavors !== undefined ? Number(minFlavors) : oldProduct.minFlavors;
+    const parsedMaxFlavors =
+      maxFlavors !== undefined ? Number(maxFlavors) : oldProduct.maxFlavors;
+
+    const flavorRange = parseFlavorRange(parsedMinFlavors, parsedMaxFlavors);
+    if ("error" in flavorRange) {
+      return res.status(400).json({ error: flavorRange.error });
+    }
 
     const { values: parsedCategoryIds, error: categoryIdsError } =
       parseStringArray(categoryIds, "categoryIds");
@@ -396,6 +446,8 @@ export const updateProduct = async (req: Request, res: Response) => {
       description: description ?? oldProduct.description,
       price: price ? parseFloat(price) : oldProduct.price,
       discount: discount ? parseFloat(discount) : (oldProduct.discount ?? null),
+      minFlavors: flavorRange.minFlavors,
+      maxFlavors: flavorRange.maxFlavors,
       active: active !== undefined ? active : oldProduct.active,
       imageUrl: imageUrl ?? oldProduct.imageUrl,
     };

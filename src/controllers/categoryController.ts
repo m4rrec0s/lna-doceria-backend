@@ -47,6 +47,7 @@ export const createCategory = async (
         sellingType: sellingType || "unit",
         packageSizes: packageSizesString,
       },
+      include: { flavors: true },
     });
 
     const formattedCategory = {
@@ -68,7 +69,10 @@ export const getCategories = async (
   res: Response
 ): Promise<void> => {
   try {
-    const categories = await prisma.category.findMany();
+    const categories = await prisma.category.findMany({
+      include: { flavors: true },
+      orderBy: { name: "asc" },
+    });
 
     const formattedCategories = categories.map((category) => ({
       ...category,
@@ -136,6 +140,7 @@ export const updateCategory = async (
         sellingType: sellingType || category.sellingType,
         packageSizes: packageSizesString,
       },
+      include: { flavors: true },
     });
 
     const formattedCategory = {
@@ -173,7 +178,10 @@ export const getCategoryById = async (
   try {
     const { id } = req.params;
 
-    const category = await prisma.category.findUnique({ where: { id } });
+    const category = await prisma.category.findUnique({
+      where: { id },
+      include: { flavors: true },
+    });
 
     if (!category) {
       res.status(404).json({ error: "Categoria não encontrada" });
