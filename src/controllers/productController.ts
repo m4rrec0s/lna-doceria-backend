@@ -2,6 +2,56 @@ import { Request, Response } from "express";
 import { prisma } from "../utils/prismaClient";
 import { deleteFromDrive, uploadToDrive } from "../config/googleDriveConfig";
 
+const parseStringArray = (value: unknown, fieldName: string) => {
+  if (value === null || value === undefined) {
+    return { values: [] as string[] };
+  }
+
+  if (Array.isArray(value)) {
+    return { values: value.map((item) => String(item)).filter(Boolean) };
+  }
+
+  if (typeof value !== "string") {
+    return {
+      values: [] as string[],
+      error: `${fieldName} deve ser um array`,
+    };
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { values: [] as string[] };
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) {
+      return {
+        values: parsed.map((item) => String(item)).filter(Boolean),
+      };
+    }
+    if (typeof parsed === "string" && parsed.trim()) {
+      return { values: [parsed.trim()] };
+    }
+    return {
+      values: [] as string[],
+      error: `${fieldName} deve ser um array`,
+    };
+  } catch {
+    const values = trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (values.length > 0) {
+      return { values };
+    }
+    return {
+      values: [] as string[],
+      error: `${fieldName} deve ser um array`,
+    };
+  }
+};
+
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const { name, description, price, categoryIds, discount, imageUrl } =
@@ -11,17 +61,10 @@ export const createProduct = async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Campos obrigatórios faltando" });
     }
 
-    let parsedCategoryIds: string[] = [];
-    if (categoryIds) {
-      parsedCategoryIds = Array.isArray(categoryIds)
-        ? categoryIds
-        : typeof categoryIds === "string"
-        ? JSON.parse(categoryIds)
-        : [];
-
-      if (!Array.isArray(parsedCategoryIds)) {
-        return res.status(400).json({ error: "categoryIds deve ser um array" });
-      }
+    const { values: parsedCategoryIds, error: categoryIdsError } =
+      parseStringArray(categoryIds, "categoryIds");
+    if (categoryIdsError) {
+      return res.status(400).json({ error: categoryIdsError });
     }
 
     if (parsedCategoryIds.length > 0) {
@@ -145,7 +188,7 @@ export const getProducts = async (req: Request, res: Response) => {
 
 export const getProductById = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const { id } = req.params;
@@ -247,7 +290,7 @@ export const getInactiveProducts = async (req: Request, res: Response) => {
 
 export const getProductsByCategoryId = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const { id } = req.params;
@@ -331,17 +374,10 @@ export const updateProduct = async (req: Request, res: Response) => {
       imageUrl,
     } = req.body;
 
-    let parsedCategoryIds: string[] = [];
-    if (categoryIds) {
-      parsedCategoryIds = Array.isArray(categoryIds)
-        ? categoryIds
-        : typeof categoryIds === "string"
-        ? JSON.parse(categoryIds)
-        : [];
-
-      if (!Array.isArray(parsedCategoryIds)) {
-        return res.status(400).json({ error: "categoryIds deve ser um array" });
-      }
+    const { values: parsedCategoryIds, error: categoryIdsError } =
+      parseStringArray(categoryIds, "categoryIds");
+    if (categoryIdsError) {
+      return res.status(400).json({ error: categoryIdsError });
     }
 
     if (parsedCategoryIds.length > 0) {
@@ -359,7 +395,7 @@ export const updateProduct = async (req: Request, res: Response) => {
       name: name ?? oldProduct.name,
       description: description ?? oldProduct.description,
       price: price ? parseFloat(price) : oldProduct.price,
-      discount: discount ? parseFloat(discount) : oldProduct.discount ?? null,
+      discount: discount ? parseFloat(discount) : (oldProduct.discount ?? null),
       active: active !== undefined ? active : oldProduct.active,
       imageUrl: imageUrl ?? oldProduct.imageUrl,
     };
@@ -388,7 +424,7 @@ export const updateProduct = async (req: Request, res: Response) => {
 
 export const deleteProduct = async (
   req: Request,
-  res: Response
+  res: Response,
 ): Promise<void> => {
   try {
     const { id } = req.params;
