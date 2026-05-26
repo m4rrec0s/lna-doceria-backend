@@ -6,46 +6,16 @@ export const createCategory = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { name, sellingType, packageSizes } = req.body;
+    const { name } = req.body;
 
     if (!name) {
       res.status(400).json({ error: "Nome da categoria é obrigatório" });
       return;
     }
 
-    if (sellingType && !["unit", "package"].includes(sellingType)) {
-      res.status(400).json({
-        error: "Tipo de venda inválido. Use 'unit' ou 'package'",
-      });
-      return;
-    }
-
-    let packageSizesString = null;
-    if (packageSizes) {
-      if (Array.isArray(packageSizes)) {
-        packageSizesString = JSON.stringify(packageSizes);
-      } else {
-        try {
-          const parsedSizes = JSON.parse(packageSizes);
-          if (!Array.isArray(parsedSizes)) {
-            throw new Error("packageSizes deve ser um array");
-          }
-          packageSizesString = packageSizes;
-        } catch (error) {
-          res.status(400).json({
-            error:
-              "O formato de packageSizes é inválido. Deve ser um array JSON",
-          });
-          return;
-        }
-      }
-    }
-
     const category = await prisma.category.create({
       data: {
         name,
-        sellingType: sellingType || "unit",
-        packageSizes: packageSizesString,
       },
       include: { flavors: true },
     });
@@ -94,7 +64,7 @@ export const updateCategory = async (
 ): Promise<void> => {
   try {
     const { id } = req.params;
-    const { name, sellingType, packageSizes } = req.body;
+    const { name } = req.body;
 
     const category = await prisma.category.findUnique({ where: { id } });
 
@@ -103,42 +73,10 @@ export const updateCategory = async (
       return;
     }
 
-    if (sellingType && !["unit", "package"].includes(sellingType)) {
-      res.status(400).json({
-        error: "Tipo de venda inválido. Use 'unit' ou 'package'",
-      });
-      return;
-    }
-
-    let packageSizesString = category.packageSizes;
-    if (packageSizes !== undefined) {
-      if (packageSizes === null) {
-        packageSizesString = null;
-      } else if (Array.isArray(packageSizes)) {
-        packageSizesString = JSON.stringify(packageSizes);
-      } else {
-        try {
-          const parsedSizes = JSON.parse(packageSizes);
-          if (!Array.isArray(parsedSizes)) {
-            throw new Error("packageSizes deve ser um array");
-          }
-          packageSizesString = packageSizes;
-        } catch (error) {
-          res.status(400).json({
-            error:
-              "O formato de packageSizes é inválido. Deve ser um array JSON",
-          });
-          return;
-        }
-      }
-    }
-
     const updatedCategory = await prisma.category.update({
       where: { id },
       data: {
         name: name || category.name,
-        sellingType: sellingType || category.sellingType,
-        packageSizes: packageSizesString,
       },
       include: { flavors: true },
     });

@@ -38,6 +38,7 @@ model Product {
   description   String
   price         Float
   packagePrices String?
+  gramsPrices   String?
   gramsOptions  String?
   imageUrls     String?
   discount      Float?

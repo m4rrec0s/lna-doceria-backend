@@ -78,6 +78,7 @@ const parseFlavorRange = (minValue: unknown, maxValue: unknown) => {
 type PackagePrice = {
   quantity: number;
   price: number;
+  discount?: number;
 };
 
 const parseNumberArray = (value: unknown, fieldName: string) => {
@@ -137,15 +138,28 @@ const parsePackagePrices = (value: unknown) => {
       if (!item || typeof item !== "object") return null;
       const quantity = Number((item as { quantity?: unknown }).quantity);
       const price = Number((item as { price?: unknown }).price);
+      const rawDiscount = (item as { discount?: unknown }).discount;
+      const parsedDiscount =
+        rawDiscount === undefined || rawDiscount === null || rawDiscount === ""
+          ? null
+          : Number(rawDiscount);
       if (
         Number.isNaN(quantity) ||
         Number.isNaN(price) ||
         quantity <= 0 ||
-        price < 0
+        price < 0 ||
+        (parsedDiscount !== null &&
+          (Number.isNaN(parsedDiscount) ||
+            parsedDiscount < 0 ||
+            parsedDiscount > 100))
       ) {
         return null;
       }
-      return { quantity: Math.floor(quantity), price };
+      return {
+        quantity: Math.floor(quantity),
+        price,
+        ...(parsedDiscount === null ? {} : { discount: parsedDiscount }),
+      };
     })
     .filter((item): item is PackagePrice => item !== null)
     .sort((a, b) => a.quantity - b.quantity);
@@ -156,6 +170,7 @@ const parsePackagePrices = (value: unknown) => {
 const normalizeProductForResponse = <
   T extends {
     packagePrices?: string | null;
+    gramsPrices?: string | null;
     gramsOptions?: string | null;
     imageUrls?: string | null;
   },
@@ -163,6 +178,7 @@ const normalizeProductForResponse = <
   product: T,
 ) => {
   const parsedPackagePrices = parsePackagePrices(product.packagePrices);
+  const parsedGramsPrices = parsePackagePrices(product.gramsPrices);
   const parsedGrams = parseNumberArray(product.gramsOptions, "gramsOptions");
   const parsedImageUrls = parseStringArray(product.imageUrls, "imageUrls");
 
@@ -170,6 +186,8 @@ const normalizeProductForResponse = <
     ...product,
     packagePrices:
       "error" in parsedPackagePrices ? [] : parsedPackagePrices.packagePrices,
+    gramsPrices:
+      "error" in parsedGramsPrices ? [] : parsedGramsPrices.packagePrices,
     gramsOptions: "error" in parsedGrams ? [] : parsedGrams.values,
     imageUrls: "error" in parsedImageUrls ? [] : parsedImageUrls.values,
   };
@@ -186,6 +204,7 @@ export const createProduct = async (req: Request, res: Response) => {
       imageUrl,
       imageUrls,
       gramsOptions,
+      gramsPrices,
       minFlavors,
       maxFlavors,
       packagePrices,
@@ -218,6 +237,10 @@ export const createProduct = async (req: Request, res: Response) => {
     if ("error" in parsedPackagePrices) {
       return res.status(400).json({ error: parsedPackagePrices.error });
     }
+    const parsedGramsPrices = parsePackagePrices(gramsPrices);
+    if ("error" in parsedGramsPrices) {
+      return res.status(400).json({ error: parsedGramsPrices.error });
+    }
 
     const parsedGramsOptions = parseNumberArray(gramsOptions, "gramsOptions");
     if ("error" in parsedGramsOptions) {
@@ -238,7 +261,23 @@ export const createProduct = async (req: Request, res: Response) => {
       ),
     ];
 
-    if (!name || !description || !price || normalizedImageUrls.length === 0) {
+    const parsedBasePrice =
+      price === undefined || price === null || price === ""
+        ? null
+        : Number(price);
+    const hasVariablePrices =
+      parsedPackagePrices.packagePrices.length > 0 ||
+      parsedGramsPrices.packagePrices.length > 0;
+
+    if (
+      !name ||
+      !description ||
+      normalizedImageUrls.length === 0 ||
+      (!hasVariablePrices &&
+        (parsedBasePrice === null ||
+          Number.isNaN(parsedBasePrice) ||
+          parsedBasePrice < 0))
+    ) {
       return res.status(400).json({ error: "Campos obrigatórios faltando" });
     }
 
@@ -246,11 +285,17 @@ export const createProduct = async (req: Request, res: Response) => {
       data: {
         name,
         description,
-        price: parseFloat(price),
+        price:
+          parsedBasePrice !== null && !Number.isNaN(parsedBasePrice)
+            ? parsedBasePrice
+            : 0,
         imageUrl: normalizedImageUrls[0],
         imageUrls: JSON.stringify(normalizedImageUrls),
         gramsOptions: parsedGramsOptions.values.length
           ? JSON.stringify(parsedGramsOptions.values)
+          : null,
+        gramsPrices: parsedGramsPrices.packagePrices.length
+          ? JSON.stringify(parsedGramsPrices.packagePrices)
           : null,
         discount: discountValue,
         minFlavors: flavorRange.minFlavors,
@@ -546,6 +591,7 @@ export const updateProduct = async (req: Request, res: Response) => {
       imageUrl,
       imageUrls,
       gramsOptions,
+      gramsPrices,
       minFlavors,
       maxFlavors,
       packagePrices,
@@ -568,6 +614,13 @@ export const updateProduct = async (req: Request, res: Response) => {
     if ("error" in parsedPackagePrices) {
       return res.status(400).json({ error: parsedPackagePrices.error });
     }
+    const parsedGramsPrices =
+      gramsPrices !== undefined
+        ? parsePackagePrices(gramsPrices)
+        : parsePackagePrices(oldProduct.gramsPrices);
+    if ("error" in parsedGramsPrices) {
+      return res.status(400).json({ error: parsedGramsPrices.error });
+    }
 
     const parsedGramsOptions =
       gramsOptions !== undefined
@@ -585,14 +638,36 @@ export const updateProduct = async (req: Request, res: Response) => {
       return res.status(400).json({ error: parsedImageUrls.error });
     }
 
-    const normalizedImageUrls = [
-      ...new Set(
-        [
-          ...(imageUrl ? [String(imageUrl)] : []),
-          ...parsedImageUrls.values,
-        ].filter(Boolean),
-      ),
-    ];
+    const oldImageUrlsParsed = parseStringArray(oldProduct.imageUrls, "imageUrls");
+    if ("error" in oldImageUrlsParsed) {
+      return res.status(400).json({ error: oldImageUrlsParsed.error });
+    }
+
+    const normalizedImageUrls =
+      imageUrls !== undefined
+        ? [
+            ...new Set(
+              [
+                ...(imageUrl ? [String(imageUrl)] : []),
+                ...parsedImageUrls.values,
+              ].filter(Boolean),
+            ),
+          ]
+        : [
+            ...new Set(
+              [
+                oldProduct.imageUrl,
+                ...oldImageUrlsParsed.values,
+                ...(imageUrl ? [String(imageUrl)] : []),
+                ...parsedImageUrls.values,
+              ].filter(Boolean),
+            ),
+          ];
+    const normalizedMainImage =
+      (imageUrl ? String(imageUrl) : oldProduct.imageUrl) || oldProduct.imageUrl;
+    const additionalImageUrls = normalizedImageUrls.filter(
+      (url) => url && url !== normalizedMainImage,
+    );
 
     const { values: parsedCategoryIds, error: categoryIdsError } =
       parseStringArray(categoryIds, "categoryIds");
@@ -624,10 +699,13 @@ export const updateProduct = async (req: Request, res: Response) => {
       packagePrices: parsedPackagePrices.packagePrices.length
         ? JSON.stringify(parsedPackagePrices.packagePrices)
         : null,
+      gramsPrices: parsedGramsPrices.packagePrices.length
+        ? JSON.stringify(parsedGramsPrices.packagePrices)
+        : null,
       active: active !== undefined ? active : oldProduct.active,
-      imageUrl: normalizedImageUrls[0] ?? oldProduct.imageUrl,
-      imageUrls: normalizedImageUrls.length
-        ? JSON.stringify(normalizedImageUrls)
+      imageUrl: normalizedMainImage,
+      imageUrls: additionalImageUrls.length
+        ? JSON.stringify(additionalImageUrls)
         : null,
     };
 
