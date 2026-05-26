@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { prisma } from "../utils/prismaClient";
-import { deleteFromDrive, uploadToDrive } from "../config/googleDriveConfig";
+import { deleteFromDrive } from "../config/googleDriveConfig";
 
 const parseStringArray = (value: unknown, fieldName: string) => {
   if (value === null || value === undefined) {
@@ -75,6 +75,106 @@ const parseFlavorRange = (minValue: unknown, maxValue: unknown) => {
   };
 };
 
+type PackagePrice = {
+  quantity: number;
+  price: number;
+};
+
+const parseNumberArray = (value: unknown, fieldName: string) => {
+  if (value === null || value === undefined || value === "") {
+    return { values: [] as number[] };
+  }
+
+  const parsedValue =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value);
+          } catch {
+            return value
+              .split(",")
+              .map((item) => Number(item.trim()))
+              .filter((item) => !Number.isNaN(item) && item > 0);
+          }
+        })()
+      : value;
+
+  if (!Array.isArray(parsedValue)) {
+    return { error: `${fieldName} deve ser um array` };
+  }
+
+  const normalized = parsedValue
+    .map((item) => Number(item))
+    .filter((item) => !Number.isNaN(item) && item > 0)
+    .map((item) => Math.floor(item))
+    .sort((a, b) => a - b);
+
+  return { values: normalized };
+};
+
+const parsePackagePrices = (value: unknown) => {
+  if (value === null || value === undefined || value === "") {
+    return { packagePrices: [] as PackagePrice[] };
+  }
+
+  const parsedValue =
+    typeof value === "string"
+      ? (() => {
+          try {
+            return JSON.parse(value);
+          } catch {
+            return null;
+          }
+        })()
+      : value;
+
+  if (!Array.isArray(parsedValue)) {
+    return { error: "packagePrices deve ser um array" };
+  }
+
+  const normalized = parsedValue
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const quantity = Number((item as { quantity?: unknown }).quantity);
+      const price = Number((item as { price?: unknown }).price);
+      if (
+        Number.isNaN(quantity) ||
+        Number.isNaN(price) ||
+        quantity <= 0 ||
+        price < 0
+      ) {
+        return null;
+      }
+      return { quantity: Math.floor(quantity), price };
+    })
+    .filter((item): item is PackagePrice => item !== null)
+    .sort((a, b) => a.quantity - b.quantity);
+
+  return { packagePrices: normalized };
+};
+
+const normalizeProductForResponse = <
+  T extends {
+    packagePrices?: string | null;
+    gramsOptions?: string | null;
+    imageUrls?: string | null;
+  },
+>(
+  product: T,
+) => {
+  const parsedPackagePrices = parsePackagePrices(product.packagePrices);
+  const parsedGrams = parseNumberArray(product.gramsOptions, "gramsOptions");
+  const parsedImageUrls = parseStringArray(product.imageUrls, "imageUrls");
+
+  return {
+    ...product,
+    packagePrices:
+      "error" in parsedPackagePrices ? [] : parsedPackagePrices.packagePrices,
+    gramsOptions: "error" in parsedGrams ? [] : parsedGrams.values,
+    imageUrls: "error" in parsedImageUrls ? [] : parsedImageUrls.values,
+  };
+};
+
 export const createProduct = async (req: Request, res: Response) => {
   try {
     const {
@@ -84,13 +184,12 @@ export const createProduct = async (req: Request, res: Response) => {
       categoryIds,
       discount,
       imageUrl,
+      imageUrls,
+      gramsOptions,
       minFlavors,
       maxFlavors,
+      packagePrices,
     } = req.body;
-
-    if (!name || !description || !price || !imageUrl) {
-      return res.status(400).json({ error: "Campos obrigatórios faltando" });
-    }
 
     const { values: parsedCategoryIds, error: categoryIdsError } =
       parseStringArray(categoryIds, "categoryIds");
@@ -115,15 +214,50 @@ export const createProduct = async (req: Request, res: Response) => {
       return res.status(400).json({ error: flavorRange.error });
     }
 
+    const parsedPackagePrices = parsePackagePrices(packagePrices);
+    if ("error" in parsedPackagePrices) {
+      return res.status(400).json({ error: parsedPackagePrices.error });
+    }
+
+    const parsedGramsOptions = parseNumberArray(gramsOptions, "gramsOptions");
+    if ("error" in parsedGramsOptions) {
+      return res.status(400).json({ error: parsedGramsOptions.error });
+    }
+
+    const parsedImageUrls = parseStringArray(imageUrls, "imageUrls");
+    if ("error" in parsedImageUrls) {
+      return res.status(400).json({ error: parsedImageUrls.error });
+    }
+
+    const normalizedImageUrls = [
+      ...new Set(
+        [
+          ...(imageUrl ? [String(imageUrl)] : []),
+          ...parsedImageUrls.values,
+        ].filter(Boolean),
+      ),
+    ];
+
+    if (!name || !description || !price || normalizedImageUrls.length === 0) {
+      return res.status(400).json({ error: "Campos obrigatórios faltando" });
+    }
+
     const product = await prisma.product.create({
       data: {
         name,
         description,
         price: parseFloat(price),
-        imageUrl,
+        imageUrl: normalizedImageUrls[0],
+        imageUrls: JSON.stringify(normalizedImageUrls),
+        gramsOptions: parsedGramsOptions.values.length
+          ? JSON.stringify(parsedGramsOptions.values)
+          : null,
         discount: discountValue,
         minFlavors: flavorRange.minFlavors,
         maxFlavors: flavorRange.maxFlavors,
+        packagePrices: parsedPackagePrices.packagePrices.length
+          ? JSON.stringify(parsedPackagePrices.packagePrices)
+          : null,
         categories: parsedCategoryIds.length
           ? { connect: parsedCategoryIds.map((id) => ({ id })) }
           : undefined,
@@ -131,7 +265,7 @@ export const createProduct = async (req: Request, res: Response) => {
       include: { categories: true },
     });
 
-    res.status(201).json(product);
+    res.status(201).json(normalizeProductForResponse(product));
   } catch (error) {
     console.error("Erro ao criar produto:", error);
     res.status(500).json({
@@ -158,7 +292,7 @@ export const getAllProducts = async (req: Request, res: Response) => {
     ]);
 
     res.json({
-      data: products,
+      data: products.map(normalizeProductForResponse),
       pagination: {
         total: totalCount,
         page,
@@ -201,7 +335,7 @@ export const getProducts = async (req: Request, res: Response) => {
     ]);
 
     res.json({
-      data: products,
+      data: products.map(normalizeProductForResponse),
       pagination: {
         total: totalCount,
         page,
@@ -240,7 +374,7 @@ export const getProductById = async (
       return;
     }
 
-    res.json(product);
+    res.json(normalizeProductForResponse(product));
   } catch (error) {
     console.error("Erro ao buscar produto:", error);
     res.status(500).json({
@@ -374,7 +508,7 @@ export const getProductsByCategoryId = async (
     ]);
 
     res.json({
-      data: products,
+      data: products.map(normalizeProductForResponse),
       pagination: {
         total: totalCount,
         page,
@@ -410,8 +544,11 @@ export const updateProduct = async (req: Request, res: Response) => {
       categoryIds,
       discount,
       imageUrl,
+      imageUrls,
+      gramsOptions,
       minFlavors,
       maxFlavors,
+      packagePrices,
     } = req.body;
 
     const parsedMinFlavors =
@@ -423,6 +560,39 @@ export const updateProduct = async (req: Request, res: Response) => {
     if ("error" in flavorRange) {
       return res.status(400).json({ error: flavorRange.error });
     }
+
+    const parsedPackagePrices =
+      packagePrices !== undefined
+        ? parsePackagePrices(packagePrices)
+        : parsePackagePrices(oldProduct.packagePrices);
+    if ("error" in parsedPackagePrices) {
+      return res.status(400).json({ error: parsedPackagePrices.error });
+    }
+
+    const parsedGramsOptions =
+      gramsOptions !== undefined
+        ? parseNumberArray(gramsOptions, "gramsOptions")
+        : parseNumberArray(oldProduct.gramsOptions, "gramsOptions");
+    if ("error" in parsedGramsOptions) {
+      return res.status(400).json({ error: parsedGramsOptions.error });
+    }
+
+    const parsedImageUrls =
+      imageUrls !== undefined
+        ? parseStringArray(imageUrls, "imageUrls")
+        : parseStringArray(oldProduct.imageUrls, "imageUrls");
+    if ("error" in parsedImageUrls) {
+      return res.status(400).json({ error: parsedImageUrls.error });
+    }
+
+    const normalizedImageUrls = [
+      ...new Set(
+        [
+          ...(imageUrl ? [String(imageUrl)] : []),
+          ...parsedImageUrls.values,
+        ].filter(Boolean),
+      ),
+    ];
 
     const { values: parsedCategoryIds, error: categoryIdsError } =
       parseStringArray(categoryIds, "categoryIds");
@@ -448,8 +618,17 @@ export const updateProduct = async (req: Request, res: Response) => {
       discount: discount ? parseFloat(discount) : (oldProduct.discount ?? null),
       minFlavors: flavorRange.minFlavors,
       maxFlavors: flavorRange.maxFlavors,
+      gramsOptions: parsedGramsOptions.values.length
+        ? JSON.stringify(parsedGramsOptions.values)
+        : null,
+      packagePrices: parsedPackagePrices.packagePrices.length
+        ? JSON.stringify(parsedPackagePrices.packagePrices)
+        : null,
       active: active !== undefined ? active : oldProduct.active,
-      imageUrl: imageUrl ?? oldProduct.imageUrl,
+      imageUrl: normalizedImageUrls[0] ?? oldProduct.imageUrl,
+      imageUrls: normalizedImageUrls.length
+        ? JSON.stringify(normalizedImageUrls)
+        : null,
     };
 
     if (parsedCategoryIds.length > 0) {
@@ -464,7 +643,7 @@ export const updateProduct = async (req: Request, res: Response) => {
       include: { categories: true },
     });
 
-    res.json(product);
+    res.json(normalizeProductForResponse(product));
   } catch (error) {
     console.error("Erro ao atualizar produto:", error);
     res.status(500).json({
@@ -488,9 +667,22 @@ export const deleteProduct = async (
 
     if (product.imageUrl) {
       const fileId = product.imageUrl.split("id=")[1];
-      await deleteFromDrive(fileId).catch((err) => {
-        console.warn("Erro ao deletar imagem do Google Drive:", err.message);
-      });
+      if (fileId) {
+        await deleteFromDrive(fileId).catch((err) => {
+          console.warn("Erro ao deletar imagem do Google Drive:", err.message);
+        });
+      }
+    }
+
+    const parsedImageUrls = parseStringArray(product.imageUrls, "imageUrls");
+    if (!("error" in parsedImageUrls)) {
+      for (const url of parsedImageUrls.values) {
+        const fileId = url.split("id=")[1];
+        if (!fileId) continue;
+        await deleteFromDrive(fileId).catch((err) => {
+          console.warn("Erro ao deletar imagem do Google Drive:", err.message);
+        });
+      }
     }
 
     await prisma.product.delete({ where: { id } });

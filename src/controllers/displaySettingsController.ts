@@ -42,6 +42,34 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
               }
               break;
 
+            case "category_grams":
+              if (section.categoryId) {
+                const desiredGrams = section.gramsOptions
+                  ? (JSON.parse(section.gramsOptions) as number[])
+                  : [];
+
+                const categoryProducts = await prisma.product.findMany({
+                  where: {
+                    categories: { some: { id: section.categoryId } },
+                    active: true,
+                  },
+                  orderBy: { createdAt: "desc" },
+                  take: 20,
+                });
+
+                products = categoryProducts.filter((product) => {
+                  if (!desiredGrams.length) return true;
+                  if (!product.gramsOptions) return false;
+                  try {
+                    const grams = JSON.parse(product.gramsOptions) as number[];
+                    return desiredGrams.some((item) => grams.includes(item));
+                  } catch {
+                    return false;
+                  }
+                });
+              }
+              break;
+
             case "custom":
               if (section.productIds) {
                 try {
@@ -133,11 +161,15 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
           ? JSON.parse(section.productIds)
           : [];
         const tagsArray = section.tags ? JSON.parse(section.tags) : [];
+        const gramsOptionsArray = section.gramsOptions
+          ? JSON.parse(section.gramsOptions)
+          : [];
 
         return {
           ...section,
           productIds: productIdsArray,
           tags: tagsArray,
+          gramsOptions: gramsOptionsArray,
           products: products || [],
         };
       })
@@ -192,6 +224,32 @@ export const getDisplaySectionById = async (
               },
               orderBy: { createdAt: "desc" },
               take: 10,
+            });
+          }
+          break;
+
+        case "category_grams":
+          if (section.categoryId) {
+            const desiredGrams = section.gramsOptions
+              ? (JSON.parse(section.gramsOptions) as number[])
+              : [];
+            const categoryProducts = await prisma.product.findMany({
+              where: {
+                categories: { some: { id: section.categoryId } },
+                active: true,
+              },
+              orderBy: { createdAt: "desc" },
+              take: 20,
+            });
+            products = categoryProducts.filter((product) => {
+              if (!desiredGrams.length) return true;
+              if (!product.gramsOptions) return false;
+              try {
+                const grams = JSON.parse(product.gramsOptions) as number[];
+                return desiredGrams.some((item) => grams.includes(item));
+              } catch {
+                return false;
+              }
             });
           }
           break;
@@ -285,11 +343,15 @@ export const getDisplaySectionById = async (
       : [];
 
     const tagsArray = section.tags ? JSON.parse(section.tags) : [];
+    const gramsOptionsArray = section.gramsOptions
+      ? JSON.parse(section.gramsOptions)
+      : [];
 
     res.json({
       ...section,
       productIds: productIdsArray,
       tags: tagsArray,
+      gramsOptions: gramsOptionsArray,
       products: products || [],
     });
   } catch (error) {
@@ -307,7 +369,7 @@ export const createDisplaySection = async (
 ): Promise<void> => {
   try {
     const section = req.body;
-    const validTypes = ["category", "custom", "discounted", "new_arrivals"];
+    const validTypes = ["category", "category_grams", "custom", "discounted", "new_arrivals"];
 
     if (!validTypes.includes(section.type)) {
       res.status(400).json({
@@ -318,7 +380,7 @@ export const createDisplaySection = async (
       return;
     }
 
-    if (section.type === "category" && section.categoryId) {
+    if ((section.type === "category" || section.type === "category_grams") && section.categoryId) {
       const categoryExists = await prisma.category.findUnique({
         where: { id: section.categoryId },
       });
@@ -374,6 +436,9 @@ export const createDisplaySection = async (
         startDate: section.startDate ? new Date(section.startDate) : null,
         endDate: section.endDate ? new Date(section.endDate) : null,
         tags: section.tags ? JSON.stringify(section.tags) : null,
+        gramsOptions: section.gramsOptions
+          ? JSON.stringify(section.gramsOptions)
+          : null,
       },
     });
 
@@ -403,7 +468,7 @@ export const updateDisplaySection = async (
       return;
     }
 
-    const validTypes = ["category", "custom", "discounted", "new_arrivals"];
+    const validTypes = ["category", "category_grams", "custom", "discounted", "new_arrivals"];
     if (section.type && !validTypes.includes(section.type)) {
       res.status(400).json({
         error: `Tipo inválido: ${
@@ -413,7 +478,7 @@ export const updateDisplaySection = async (
       return;
     }
 
-    if (section.type === "category" && section.categoryId) {
+    if ((section.type === "category" || section.type === "category_grams") && section.categoryId) {
       const categoryExists = await prisma.category.findUnique({
         where: { id: section.categoryId },
       });
@@ -471,6 +536,9 @@ export const updateDisplaySection = async (
         tags: section.tags
           ? JSON.stringify(section.tags)
           : existingSection.tags,
+        gramsOptions: section.gramsOptions
+          ? JSON.stringify(section.gramsOptions)
+          : existingSection.gramsOptions,
       },
     });
 
@@ -530,7 +598,7 @@ export const updateAllDisplaySections = async (
           continue;
         }
 
-        const validTypes = ["category", "custom", "discounted", "new_arrivals"];
+        const validTypes = ["category", "category_grams", "custom", "discounted", "new_arrivals"];
         if (section.type && !validTypes.includes(section.type)) {
           errors.push({
             section,
@@ -541,7 +609,7 @@ export const updateAllDisplaySections = async (
           continue;
         }
 
-        if (section.type === "category" && section.categoryId) {
+        if ((section.type === "category" || section.type === "category_grams") && section.categoryId) {
           const categoryExists = await tx.category.findUnique({
             where: { id: section.categoryId },
           });

@@ -49,17 +49,37 @@ export const routes = Router();
 // posts
 routes.post("/login", loginController);
 routes.post("/register", registerController);
-routes.post("/products", upload.single("image"), async (req, res) => {
+routes.post(
+  "/products",
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "images", maxCount: 10 },
+  ]),
+  async (req, res) => {
   try {
-    if (req.file) {
-      req.body.imageUrl = await uploadToDrive(req.file);
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+    const primaryImage = files?.image?.[0];
+    const galleryImages = files?.images ?? [];
+
+    const uploadedImageUrls = await Promise.all(
+      galleryImages.map((file) => uploadToDrive(file)),
+    );
+
+    if (primaryImage) {
+      req.body.imageUrl = await uploadToDrive(primaryImage);
+    }
+    if (uploadedImageUrls.length > 0) {
+      req.body.imageUrls = JSON.stringify(uploadedImageUrls);
     }
     await createProduct(req, res);
   } catch (error) {
     console.error("Erro na rota de criação de produto:", error);
     res.status(500).json({ error: "Erro ao processar upload" });
   }
-});
+  },
+);
 routes.post("/categories", createCategory);
 routes.post("/display-sections", createDisplaySection);
 routes.post("/flavors", upload.single("image"), async (req, res) => {
@@ -93,12 +113,23 @@ routes.get("/categories/:categoryId/flavors", getFlavorsByCategoryId);
 
 // puts
 routes.put("/categories/:id", updateCategory);
-routes.put("/products/:id", upload.single("image"), async (req, res) => {
+routes.put(
+  "/products/:id",
+  upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "images", maxCount: 10 },
+  ]),
+  async (req, res) => {
   try {
     const { id } = req.params;
     const oldProduct = await prisma.product.findUnique({ where: { id } });
+    const files = req.files as
+      | { [fieldname: string]: Express.Multer.File[] }
+      | undefined;
+    const primaryImage = files?.image?.[0];
+    const galleryImages = files?.images ?? [];
 
-    if (req.file) {
+    if (primaryImage) {
       if (oldProduct?.imageUrl) {
         const fileId = oldProduct.imageUrl.split("id=")[1];
         try {
@@ -111,14 +142,22 @@ routes.put("/products/:id", upload.single("image"), async (req, res) => {
           }
         }
       }
-      req.body.imageUrl = await uploadToDrive(req.file);
+      req.body.imageUrl = await uploadToDrive(primaryImage);
+    }
+
+    if (galleryImages.length > 0) {
+      const uploadedImageUrls = await Promise.all(
+        galleryImages.map((file) => uploadToDrive(file)),
+      );
+      req.body.imageUrls = JSON.stringify(uploadedImageUrls);
     }
     await updateProduct(req, res);
   } catch (error) {
     console.error("Erro na rota de atualização de produto:", error);
     res.status(500).json({ error: "Erro ao processar upload" });
   }
-});
+  },
+);
 routes.put("/flavors/:id", upload.single("image"), async (req, res) => {
   try {
     const { id } = req.params;
