@@ -8,20 +8,35 @@ export const getDisplaySettings = async (req: Request, res: Response) => {
     const limit = parseInt(req.query.limit as string) || 2;
     const skip = (page - 1) * limit;
 
+    const now = new Date();
+    const where = {
+      active: true,
+      AND: [
+        {
+          OR: [
+            { startDate: null },
+            { startDate: { lte: now } }
+          ]
+        },
+        {
+          OR: [
+            { endDate: null },
+            { endDate: { gte: now } }
+          ]
+        }
+      ]
+    };
+
     const displaySections = await prisma.displaySection.findMany({
+      where,
       orderBy: { order: "asc" },
       include: { category: true },
       skip,
       take: limit,
     });
 
-    const totalSections = await prisma.displaySection.count();
-    const now = new Date();
-    const activeSections = displaySections.filter((section) => {
-      if (section.startDate && section.startDate > now) return false;
-      if (section.endDate && section.endDate < now) return false;
-      return true;
-    });
+    const totalSections = await prisma.displaySection.count({ where });
+    const activeSections = displaySections;
 
     const formattedSections = await Promise.all(
       activeSections.map(async (section) => {
