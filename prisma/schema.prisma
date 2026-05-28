@@ -36,8 +36,10 @@ model Product {
   id            String     @id @default(uuid())
   name          String
   description   String
-  price         Float
-  packagePrices String?
+  price           Float
+  unitMinQuantity Int?
+  unitMaxQuantity Int?
+  packagePrices   String?
   gramsPrices   String?
   gramsOptions  String?
   imageUrls     String?

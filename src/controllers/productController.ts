@@ -75,6 +75,50 @@ const parseFlavorRange = (minValue: unknown, maxValue: unknown) => {
   };
 };
 
+const parseUnitRange = (
+  minValue: unknown,
+  maxValue: unknown,
+  requireMin: boolean,
+) => {
+  const isEmpty = (value: unknown) =>
+    value === undefined || value === null || value === "";
+
+  if (isEmpty(minValue) && isEmpty(maxValue)) {
+    if (requireMin) {
+      return {
+        error:
+          "minUnitQuantity é obrigatório quando o preço unitário estiver definido",
+      };
+    }
+    return { minQuantity: null as number | null, maxQuantity: null as number | null };
+  }
+
+  if (isEmpty(minValue)) {
+    return {
+      error: "minUnitQuantity é obrigatório quando maxUnitQuantity é informado",
+    };
+  }
+
+  const minQuantity = Number(minValue);
+  if (Number.isNaN(minQuantity) || minQuantity <= 0) {
+    return { error: "minUnitQuantity deve ser maior que 0" };
+  }
+
+  let maxQuantity: number | null = null;
+  if (!isEmpty(maxValue)) {
+    const parsedMax = Number(maxValue);
+    if (Number.isNaN(parsedMax) || parsedMax < minQuantity) {
+      return { error: "maxUnitQuantity deve ser maior ou igual ao mínimo" };
+    }
+    maxQuantity = Math.floor(parsedMax);
+  }
+
+  return {
+    minQuantity: Math.floor(minQuantity),
+    maxQuantity,
+  };
+};
+
 type PackagePrice = {
   quantity: number;
   price: number;
@@ -208,6 +252,8 @@ export const createProduct = async (req: Request, res: Response) => {
       minFlavors,
       maxFlavors,
       packagePrices,
+      unitMinQuantity,
+      unitMaxQuantity,
     } = req.body;
 
     const { values: parsedCategoryIds, error: categoryIdsError } =
@@ -270,6 +316,26 @@ export const createProduct = async (req: Request, res: Response) => {
       parsedGramsPrices.packagePrices.length > 0;
 
     if (
+      parsedBasePrice !== null &&
+      (Number.isNaN(parsedBasePrice) || parsedBasePrice < 0)
+    ) {
+      return res.status(400).json({ error: "Preço inválido" });
+    }
+
+    const hasUnitPrice =
+      parsedBasePrice !== null &&
+      !Number.isNaN(parsedBasePrice) &&
+      parsedBasePrice > 0;
+    const unitRange = parseUnitRange(
+      unitMinQuantity,
+      unitMaxQuantity,
+      hasUnitPrice,
+    );
+    if ("error" in unitRange) {
+      return res.status(400).json({ error: unitRange.error });
+    }
+
+    if (
       !name ||
       !description ||
       normalizedImageUrls.length === 0 ||
@@ -289,6 +355,8 @@ export const createProduct = async (req: Request, res: Response) => {
           parsedBasePrice !== null && !Number.isNaN(parsedBasePrice)
             ? parsedBasePrice
             : 0,
+        unitMinQuantity: unitRange.minQuantity,
+        unitMaxQuantity: unitRange.maxQuantity,
         imageUrl: normalizedImageUrls[0],
         imageUrls: JSON.stringify(normalizedImageUrls),
         gramsOptions: parsedGramsOptions.values.length
@@ -595,7 +663,29 @@ export const updateProduct = async (req: Request, res: Response) => {
       minFlavors,
       maxFlavors,
       packagePrices,
+      unitMinQuantity,
+      unitMaxQuantity,
     } = req.body;
+
+    const hasUnitPriceInRequest =
+      price !== undefined && price !== null && price !== "" && Number(price) > 0;
+    const hasUnitRangeInRequest =
+      unitMinQuantity !== undefined ||
+      unitMaxQuantity !== undefined ||
+      hasUnitPriceInRequest;
+
+    let unitRange: { minQuantity: number | null; maxQuantity: number | null } | null = null;
+    if (hasUnitRangeInRequest) {
+      const result = parseUnitRange(
+        unitMinQuantity,
+        unitMaxQuantity,
+        hasUnitPriceInRequest,
+      );
+      if ("error" in result) {
+        return res.status(400).json({ error: result.error });
+      }
+      unitRange = result;
+    }
 
     const parsedMinFlavors =
       minFlavors !== undefined ? Number(minFlavors) : oldProduct.minFlavors;
@@ -638,7 +728,10 @@ export const updateProduct = async (req: Request, res: Response) => {
       return res.status(400).json({ error: parsedImageUrls.error });
     }
 
-    const oldImageUrlsParsed = parseStringArray(oldProduct.imageUrls, "imageUrls");
+    const oldImageUrlsParsed = parseStringArray(
+      oldProduct.imageUrls,
+      "imageUrls",
+    );
     if ("error" in oldImageUrlsParsed) {
       return res.status(400).json({ error: oldImageUrlsParsed.error });
     }
@@ -664,7 +757,8 @@ export const updateProduct = async (req: Request, res: Response) => {
             ),
           ];
     const normalizedMainImage =
-      (imageUrl ? String(imageUrl) : oldProduct.imageUrl) || oldProduct.imageUrl;
+      (imageUrl ? String(imageUrl) : oldProduct.imageUrl) ||
+      oldProduct.imageUrl;
     const additionalImageUrls = normalizedImageUrls.filter(
       (url) => url && url !== normalizedMainImage,
     );
@@ -689,7 +783,11 @@ export const updateProduct = async (req: Request, res: Response) => {
     const updateData: any = {
       name: name ?? oldProduct.name,
       description: description ?? oldProduct.description,
-      price: price ? parseFloat(price) : oldProduct.price,
+      price: price !== undefined && price !== null && price !== ""
+        ? Number(price)
+        : oldProduct.price,
+      unitMinQuantity: unitRange !== null ? unitRange.minQuantity : oldProduct.unitMinQuantity,
+      unitMaxQuantity: unitRange !== null ? unitRange.maxQuantity : oldProduct.unitMaxQuantity,
       discount: discount ? parseFloat(discount) : (oldProduct.discount ?? null),
       minFlavors: flavorRange.minFlavors,
       maxFlavors: flavorRange.maxFlavors,
