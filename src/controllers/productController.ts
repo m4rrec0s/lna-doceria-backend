@@ -669,13 +669,21 @@ export const updateProduct = async (req: Request, res: Response) => {
 
     const hasUnitPriceInRequest =
       price !== undefined && price !== null && price !== "" && Number(price) > 0;
+    const hasUnitMinInRequest = unitMinQuantity !== undefined && unitMinQuantity !== null && unitMinQuantity !== "";
+    const hasUnitMaxInRequest = unitMaxQuantity !== undefined && unitMaxQuantity !== null && unitMaxQuantity !== "";
     const hasUnitRangeInRequest =
-      unitMinQuantity !== undefined ||
-      unitMaxQuantity !== undefined ||
+      hasUnitMinInRequest ||
+      hasUnitMaxInRequest ||
       hasUnitPriceInRequest;
 
+    const unitRangeExplicitlyCleaned =
+      unitMinQuantity !== undefined && !hasUnitMinInRequest &&
+      unitMaxQuantity !== undefined && !hasUnitMaxInRequest;
+
     let unitRange: { minQuantity: number | null; maxQuantity: number | null } | null = null;
-    if (hasUnitRangeInRequest) {
+    if (unitRangeExplicitlyCleaned) {
+      unitRange = { minQuantity: null, maxQuantity: null };
+    } else if (hasUnitRangeInRequest) {
       const result = parseUnitRange(
         unitMinQuantity,
         unitMaxQuantity,
