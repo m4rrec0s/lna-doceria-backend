@@ -794,8 +794,12 @@ export const updateProduct = async (req: Request, res: Response) => {
       price: price !== undefined && price !== null && price !== ""
         ? Number(price)
         : oldProduct.price,
-      unitMinQuantity: unitRange !== null ? unitRange.minQuantity : oldProduct.unitMinQuantity,
-      unitMaxQuantity: unitRange !== null ? unitRange.maxQuantity : oldProduct.unitMaxQuantity,
+      unitMinQuantity: parsedPackagePrices.packagePrices.length === 0
+        ? null
+        : unitRange !== null ? unitRange.minQuantity : oldProduct.unitMinQuantity,
+      unitMaxQuantity: parsedPackagePrices.packagePrices.length === 0
+        ? null
+        : unitRange !== null ? unitRange.maxQuantity : oldProduct.unitMaxQuantity,
       discount: discount ? parseFloat(discount) : (oldProduct.discount ?? null),
       minFlavors: flavorRange.minFlavors,
       maxFlavors: flavorRange.maxFlavors,
